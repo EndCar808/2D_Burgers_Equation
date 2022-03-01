@@ -62,10 +62,10 @@ int main(int argc, char** argv) {
 	clock_t begin = clock();
 	
 	// Read in Command Line Arguments
-	// if (GetCMLArgs(argc, argv) != 0) {
-	// 	fprintf(stderr, "\n["RED"ERROR"RESET"]: Error in reading in command line aguments, check utils.c file for details\n");
-	// 	exit(1);
-	// }
+	if (GetCMLArgs(argc, argv) != 0) {
+		fprintf(stderr, "\n["RED"ERROR"RESET"]: Error in reading in command line aguments, check utils.c file for details\n");
+		exit(1);
+	}
 
 
 	//////////////////////////////////

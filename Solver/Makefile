@@ -113,12 +113,12 @@ test_run: $(BIN)/solver_test
 	mpirun -n 4 $(BIN)/solver_test -o "../Data/Test/" -n 128 -n 128 -s 0.0 -e 1.0 -h 0.0001 -i "TG_VORT" -v 1.0 -t "TG-TEST"
 
 # Taylor Green IC
-$(BIN)/solver_test: $(SRCOBJ_TG) $(DEPS)
+$(BIN)/solver_test: $(SRCOBJ_TST) $(DEPS)
 	$(GCC) $(CCFLAG) $(TEST_FLAGS) $(DSET_FLAGS) -o $@ $^ ${INCDIR} ${LIBDIR} $(LIBFLAG) $(GSLFLAG)
 
 $(OBJBIN)/%_test.o: $(SRCDIR)/%.c $(DEPS)
 	$(GCC) $(CCFLAG) $(TEST_FLAGS) $(DSET_FLAGS) -c $^ -o $@ ${INCDIR} ${LIBDIR} $(LIBFLAG) $(GSLFLAG)
-	
+
 # ---------------------------------------------------------------------
 #  Clean up
 # ---------------------------------------------------------------------
