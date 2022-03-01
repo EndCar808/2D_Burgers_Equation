@@ -90,12 +90,11 @@ int main(int argc, char** argv) {
 		printf("\n\nTotal Execution Time: ["CYAN"%5.10lf"RESET"] --> "CYAN"%d"RESET" hrs : "CYAN"%d"RESET" mins : "CYAN"%d"RESET" secs\n\n", time_spent, hh, mm, ss);
 
 		// Print simulation details to .txt file in default output mode
-		// if (!file_info->file_only) {
-		// 	PrintSimulationDetails(argc, argv, time_spent);
-		// }
+		if (!file_info->file_only) {
+			PrintSimulationDetails(argc, argv, time_spent);
+		}
 	}
 
-	
 	// Cleanup FFTW MPI interface - Calls the serial fftw_cleanup function also
 	fftw_mpi_cleanup();    
 

@@ -146,9 +146,9 @@ int GetCMLArgs(int argc, char** argv) {
                 break;
             case 'i':
                 // Read in the initial conditions
-                if (!(strcmp(optarg,"TG_VORT"))) {
+                if (!(strcmp(optarg,"TG_VEL"))) {
                     // The Taylor Green vortex - starting with the velocity
-                    strncpy(sys_vars->u0, "TG_VORT", 64);
+                    strncpy(sys_vars->u0, "TG_VEL", 64);
                     break;
                 }
                 else if (!(strcmp(optarg,"TESTING"))) {
@@ -225,7 +225,139 @@ int GetCMLArgs(int argc, char** argv) {
     }
 
     return 0;
-}   
+} 
+/**
+ * Function that prints the summary details of the simulation to a .txt
+ * @param sim_time The execution time of the simulation 
+ * @param argc     The number of command line arguments
+ * @param argv     Array conatining the command line arguments
+ */
+void PrintSimulationDetails(int argc, char** argv, double sim_time) {
+
+    // Initialize variables
+    FILE *sim_file;
+    char sys_type[64];
+    char solv_type[64];
+    char model_type[64];
+    char dealias_type[64];
+    char file_path[512];
+
+    // -------------------------------
+    // Open File
+    // -------------------------------
+    strcpy(file_path, file_info->output_dir);
+    strcat(file_path, "SimulationDetails.txt");
+    sim_file = fopen(file_path, "w");
+
+    // -------------------------------
+    // Print Executing Command
+    // -------------------------------
+    fprintf(sim_file, "Executing Command:"); 
+    fprintf(sim_file, "\n\n\tmpirun -n %d ", sys_vars->num_procs);
+    for (int i = 0; i < argc; ++i) {
+        fprintf(sim_file, "%s ", argv[i]);
+    }
+    fprintf(sim_file, "\n\n");
+    // -------------------------------
+    // Print Simulation Details
+    // -------------------------------
+    // Simulation Mode
+    #if defined(__VISCOUS)
+    sprintf(sys_type, "%s", "VISC");
+    #elif defined(__INVISCID)
+    sprintf(sys_type, "%s", "INVISC");
+    #else
+    sprintf(sys_type, "%s", "SYS_UNKN");
+    #endif
+    #if defined(__RK4)
+    sprintf(solv_type, "%s", "RK4");
+    #elif defined(__RK5)
+    sprintf(solv_type, "%s", "RK5");
+    #elif defined(__DPRK5)
+    sprintf(solv_type, "%s", "DP5");
+    #else 
+    sprintf(solv_type, "%s", "SOLV_UKN");
+    #endif
+    #if defined(__PHASE_ONLY)
+    sprintf(model_type, "%s", "PHAEONLY");
+    #else
+    sprintf(model_type, "%s", "FULL");
+    #endif
+    fprintf(sim_file, "Systen Type: %s\nSolver Type: %s\nModel Type: %s\n", sys_type, solv_type, model_type);
+
+    // System Params
+    fprintf(sim_file, "Viscosity: %1.6lf\n", sys_vars->NU);
+    fprintf(sim_file, "Re: %5.1lf\n", 1.0 / sys_vars->NU);
+    #if defined(__HYPER)
+    fprintf(sim_file, "Hyperviscosity: YES\n");
+    fprintf(sim_file, "Hyperviscosity Power: %1.1lf\n", VIS_POW);   
+    #else
+    fprintf(sim_file, "Hyperviscosity: NO\n");
+    #endif
+
+    // Spatial details
+    fprintf(sim_file, "\nCollocation Points: [%ld, %ld]\n", sys_vars->N[0], sys_vars->N[1]);
+    fprintf(sim_file, "Spatial Increment: [%1.4lf, %1.4lf]\n", sys_vars->dx, sys_vars->dy);
+    fprintf(sim_file, "Fourier Modes: [%ld, %ld]\n\n", sys_vars->N[0], sys_vars->N[1]/2 + 1);
+
+    // Initial Conditions
+    fprintf(sim_file, "Initial Conditions: %s\n", sys_vars->u0);
+    
+    // Dealising details
+    #if defined(__DEALIAS_HOU_LI)
+    sprintf(dealias_type, "%s", "HOU-LI");
+    #elif defined(__DEALIAS_23)
+    sprintf(dealias_type, "%s", "2/3 RDS");
+    #else
+    sprintf(dealias_type, "%s", "UNKNOWN");
+    #endif
+    fprintf(sim_file, "Dealiasing: %s\n", dealias_type);
+    
+    // Forcing
+    fprintf(sim_file, "Forcing Type: %s\n\n", sys_vars->forcing);
+
+    // Time details
+    fprintf(sim_file, "Time Range: [%1.1lf - %1.1lf]\n", sys_vars->t0, sys_vars->T);
+    fprintf(sim_file, "Finishing Timestep: %1.10lf\n", sys_vars->dt);
+    fprintf(sim_file, "CFL No.: %1.5lf\n", sys_vars->CFL_CONST);
+    #if defined(__ADAPTIVE_STEP)
+    fprintf(sim_file, "Adaptive Stepping: YES\n");
+    #if defined(__CFL_STEP)
+    fprintf(sim_file, "CFL Stepping Mode: YES\n");
+    #else
+    fprintf(sim_file, "CFL Stepping Mode: NO\n");   
+    #endif  
+    fprintf(sim_file, "Total Timesteps: %ld\n", sys_vars->num_t_steps);
+    fprintf(sim_file, "Total Timesteps Executed: %ld\n", sys_vars->tot_iters);
+    fprintf(sim_file, "Timestep Range [min - max]: [%1.10lf - %1.10lf]\n", sys_vars->min_dt, sys_vars->max_dt);
+    #else
+    fprintf(sim_file, "Adaptive Stepping: NO\n");
+    fprintf(sim_file, "Total Timesteps: %ld\n", sys_vars->num_t_steps);
+    #endif
+    
+    // Printing
+    fprintf(sim_file, "Data Saved Every: %d\n", sys_vars->print_every);
+    fprintf(sim_file, "Total Saving Steps: %ld\n", sys_vars->tot_save_steps);
+
+    // Flux subset details
+    #if defined(__SPECT)
+    fprintf(sim_file, "\nFlux Subset Details: \n\tLower Limit: %d\n\tUpper Limit: %d\n", LWR_SBST_LIM, UPR_SBST_LIM);
+    #endif
+
+    
+    // -------------------------------
+    // Print Execution Time to File
+    // -------------------------------
+    int hh = (int) sim_time / 3600;
+    int mm = ((int )sim_time - hh * 3600) / 60;
+    int ss = sim_time - hh * 3600 - mm * 60;
+    fprintf(sim_file, "\n\nTotal Execution Time: %5.10lf --> %d hrs : %d mins : %d secs\n\n", sim_time, hh, mm, ss);
+
+    // -------------------------------
+    // Close File
+    // -------------------------------
+    fclose(sim_file);
+}  
 /**
  * Function to print the Real and Fourier space variables
  */

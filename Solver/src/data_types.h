@@ -122,7 +122,7 @@
 #define DP_DELTA_MAX 1.5 		// The max delta value for the Dormand Prince scheme
 #define DP_DELTA 0.8 			// The scaling parameter of the error for the Dormand Prince Scheme
 // Initial Conditions parameters
-
+#define KAPPA M_PI 				// Wavenumber for the initial condition
 // System checking parameters
 #define MIN_STEP_SIZE 1e-10 	// The minimum allowed stepsize for the solver 
 #define MAX_ITERS 1e+12			// The maximum iterations to perform
@@ -211,8 +211,7 @@ typedef struct RK_data_struct {
 	fftw_complex* RK7; 		  // Array to hold the result of the seventh stage of the Dormand Prince Scheme
 	fftw_complex* RK_tmp;	  // Array to hold the tempory updates to w_hat - input to RHS function
 	fftw_complex* w_hat_last; // Array to hold the values of the Fourier space vorticity from the previous iteration - used in the stepsize control in DP scheme
-	double* nabla_psi;		  // Batch array the velocities u = d\psi_dy and v = -d\psi_dx
-	double* nabla_w;		  // Batch array to hold \nabla\omega - the vorticity derivatives
+	double* nabla_u;		  // Batch array the velocities in Real space for the nonlinear term
 	double DP_err; 			  // Variable to hold the error between the embedded methods in the Dormand Prince scheme
 	int DP_fails;
 } RK_data_struct;

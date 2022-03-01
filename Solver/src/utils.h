@@ -20,6 +20,7 @@
 // ---------------------------------------------------------------------
 // Command  Line Arguments
 int GetCMLArgs(int argc, char** argv);
+void PrintSimulationDetails(int argc, char** argv, double sim_time);
 void PrintSpaceVariables(const long int* N);
 // ---------------------------------------------------------------------
 //  End of File

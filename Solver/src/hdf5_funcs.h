@@ -16,7 +16,9 @@
 //  Function Prototpyes
 // ---------------------------------------------------------------------
 void CreateOutputFilesWriteICs(const long int* N, double dt);
-
+void GetOutputDirPath(void);
+hid_t CreateComplexDatatype(void);
+hid_t CreateGroup(hid_t file_handle, char* filename, char* group_name, double t, double dt, long int iters);
 // ---------------------------------------------------------------------
 //  End of File
 // ---------------------------------------------------------------------
