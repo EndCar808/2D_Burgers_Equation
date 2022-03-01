@@ -88,12 +88,12 @@
 
 // Choose whether to save the Real Space or Fourier Space vorticity
 // #define __VORT_REAL
-#define __VORT_FOUR
+// #define __VORT_FOUR
 // Choose whether to save the Nonlinear term or RHS of equation of motion
 // #define __RHS
 // #define __NONLIN
 // Choose whether to save the Real or Fourier space velocitites
-// #define __MODES
+#define __MODES
 // #define __REALSPACE
 // Choose whether to compute system measures
 #define __SYS_MEASURES

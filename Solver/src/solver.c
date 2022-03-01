@@ -76,7 +76,7 @@ void SpectralSolve(void) {
 
 	// Get initial conditions
 	InitialConditions(run_data->u, run_data->u_hat, N);
-		
+
 	// -------------------------------
 	// Integration Variables
 	// -------------------------------
@@ -94,7 +94,22 @@ void SpectralSolve(void) {
 	// Get timestep and other integration variables
 	InitializeIntegrationVariables(&t0, &t, &dt, &T, &trans_steps);
 
+	// -------------------------------
+	// Create & Open Output File
+	// -------------------------------
+	// Inialize system measurables
+	// InitializeSystemMeasurables(RK_data);
+	   
+	// Create and open the output file - also write initial conditions to file
+	CreateOutputFilesWriteICs(N, dt);
 
+	// -------------------------------------------------
+	// Print IC to Screen 
+	// -------------------------------------------------
+	// #if defined(__PRINT_SCREEN)
+	// PrintUpdateToTerminal(0, t0, dt, T, 0);
+	// #endif	
+	
 
 	//////////////////////////////
 	// Begin Integration
@@ -135,6 +150,43 @@ void SpectralSolve(void) {
 		// 	}
 		// }
 		// #endif
+		
+		// -------------------------------
+		// Write To File
+		// -------------------------------
+		if ((iters > trans_steps) && (iters % sys_vars->SAVE_EVERY == 0)) {
+			// #if defined(TESTING)
+			// TaylorGreenSoln(t, N);
+			// #endif
+
+			// Record System Measurables
+			// RecordSystemMeasures(t, save_data_indx, RK_data);
+
+			// Write the appropriate datasets to file
+			WriteDataToFile(t, dt, save_data_indx);
+			
+			// Update saving data index
+			save_data_indx++;
+		}
+		// -------------------------------
+		// Print Update To Screen
+		// -------------------------------
+		#if defined(__PRINT_SCREEN)
+		#if defined(TRANSIENTS)
+		if (iters == trans_steps && !(sys_vars->rank)) {
+			printf("\n\n...Transient Iterations Complete!\n\n");
+		}
+		#endif
+		if (iters % sys_vars->SAVE_EVERY == 0) {
+			// #if defined(TRANSIENTS)
+			// if (iters <= sys_vars->trans_iters) {
+			// 	// If currently performing transient iters, call system measure for printing to screen
+			// 	RecordSystemMeasures(t, save_data_indx, RK_data);
+			// }
+			// #endif
+			// PrintUpdateToTerminal(iters, t, dt, T, save_data_indx - 1);
+		}
+		#endif
 
 		// -------------------------------
 		// Update & System Check
@@ -155,16 +207,16 @@ void SpectralSolve(void) {
 	// End Integration
 	//////////////////////////////
 	
+
  	// ------------------------------- 
 	// Final Writes to Output File
 	// -------------------------------
-	// FinalWriteAndCloseOutputFile(N, iters, save_data_indx);
+	FinalWriteAndCloseOutputFile(N, iters, save_data_indx);
 	
-
-	// -------------------------------
-	// Clean Up 
-	// -------------------------------
-	FreeMemory(RK_data);
+	// // -------------------------------
+	// // Clean Up 
+	// // -------------------------------
+	// FreeMemory(RK_data);
 }
 /**
  * Function to initialize the Real space collocation points arrays and Fourier wavenumber arrays
@@ -504,13 +556,12 @@ void AllocateMemory(const long int* NBatch, RK_data_struct* RK_data) {
 	}
 
 	// Allocate the Real and Fourier space vorticity
-	#if defined(__VORT_REAL)
+	#if defined(__VORT_REAL) || defined(__VORT_FOUR)
 	run_data->w     = (double* )fftw_malloc(sizeof(double) * 2 * sys_vars->alloc_local);
 	if (run_data->w == NULL) {
 		fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to allocate memory for ["CYAN"%s"RESET"]\n-->> Exiting!!!\n", "Real Space Vorticity" );
 		exit(1);
 	}
-	#elif defined(__VORT_FOUR)
 	run_data->w_hat = (fftw_complex* )fftw_malloc(sizeof(fftw_complex) * sys_vars->alloc_local);
 	if (run_data->w_hat == NULL) {
 		fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to allocate memory for ["CYAN"%s"RESET"]\n-->> Exiting!!!\n", "Fourier Space Vorticity");
@@ -633,7 +684,7 @@ void AllocateMemory(const long int* NBatch, RK_data_struct* RK_data) {
 			#if defined(TESTING)
 			run_data->tg_soln[indx_real]                = 0.0;
 			#endif
-			#if defined(__VORT_REAL)
+			#if defined(__VORT_REAL) || defined(__VORT_FOUR)
 			run_data->w[indx_real]                      = 0.0;
 			#endif
 			if (j < Ny_Fourier) {
@@ -642,7 +693,7 @@ void AllocateMemory(const long int* NBatch, RK_data_struct* RK_data) {
 				run_data->phi_k[indx_four]			    = 0.0;
 				run_data->tmp_a_k[indx_four] 			= 0.0;
 				#endif
-				#if defined(__VORT_FOUR)
+				#if defined(__VORT_FOUR) || defined(__VORT_FOUR)
 				run_data->w_hat[indx_four]               	  = 0.0 + 0.0 * I;
 				#endif
 				RK_data->RK_tmp[indx_four]    			 	  = 0.0 + 0.0 * I;
@@ -656,8 +707,10 @@ void AllocateMemory(const long int* NBatch, RK_data_struct* RK_data) {
 				RK_data->RK3[SYS_DIM * indx_four + 1]    	  = 0.0 + 0.0 * I;
 				RK_data->RK4[SYS_DIM * indx_four + 0]    	  = 0.0 + 0.0 * I;
 				RK_data->RK4[SYS_DIM * indx_four + 1]    	  = 0.0 + 0.0 * I;
+				#if defined(__NONLIN)
 				run_data->nonlinterm[SYS_DIM * indx_four + 0] = 0.0 + 0.0 * I;
 				run_data->nonlinterm[SYS_DIM * indx_four + 1] = 0.0 + 0.0 * I;
+				#endif
 				#if defined(__RK5)
 				RK_data->RK5[SYS_DIM * indx_four + 0]    	  = 0.0 + 0.0 * I;
 				RK_data->RK5[SYS_DIM * indx_four + 1]    	  = 0.0 + 0.0 * I;
@@ -669,13 +722,14 @@ void AllocateMemory(const long int* NBatch, RK_data_struct* RK_data) {
 				RK_data->RK7[SYS_DIM * indx_four + 1]    	 = 0.0 + 0.0 * I;
 				RK_data->w_hat_last[indx_four]			 	 = 0.0 + 0.0 * I;
 				#endif
-				if (i == 0) {
-					if (j < Ny_Fourier) {
-						run_data->k[1][j] = 0;
-					}
-					run_data->x[1][j] = 0.0;
-				}
 			}
+			if (i == 0) {
+				if (j < Ny_Fourier) {
+					run_data->k[1][j] = 0;
+				}
+				run_data->x[1][j] = 0.0;
+			}
+
 		}
 		run_data->k[0][i] = 0; 
 		run_data->x[0][i] = 0.0;
@@ -695,12 +749,14 @@ void InitializeFFTWPlans(const long int* N) {
 	// Initialize Plans for Vorticity 
 	// -----------------------------------
 	// Set up FFTW plans for normal transform - vorticity field
+	#if defined(__VORT_FOUR) || defined(__VORT_REAL)
 	sys_vars->fftw_2d_dft_r2c = fftw_mpi_plan_dft_r2c_2d(Nx, Ny, run_data->w, run_data->w_hat, MPI_COMM_WORLD, FFTW_MEASURE | FFTW_PRESERVE_INPUT);
 	sys_vars->fftw_2d_dft_c2r = fftw_mpi_plan_dft_c2r_2d(Nx, Ny, run_data->w_hat, run_data->w, MPI_COMM_WORLD, FFTW_MEASURE | FFTW_PRESERVE_INPUT);
 	if (sys_vars->fftw_2d_dft_r2c == NULL || sys_vars->fftw_2d_dft_c2r == NULL) {
 		fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to initialize basic FFTW Plans \n-->> Exiting!!!\n");
 		exit(1);
 	}
+	#endif
 
 	// -------------------------------------
 	// Initialize batch Plans for Velocity 
@@ -731,9 +787,8 @@ void FreeMemory(RK_data_struct* RK_data) {
 	// Free system variables
 	fftw_free(run_data->u);
 	fftw_free(run_data->u_hat);
-	#if defined(__VORT_REAL)
+	#if defined(__VORT_REAL) || defined(__VORT_FOUR)
 	fftw_free(run_data->w);
-	#elif defined(__VORT_FOUR)
 	fftw_free(run_data->w_hat);
 	#endif
 	#if defined(PHASE_ONLY)
@@ -744,33 +799,33 @@ void FreeMemory(RK_data_struct* RK_data) {
 	#if defined(__NONLIN)
 	fftw_free(run_data->nonlinterm);
 	#endif
-	#if defined(__SYS_MEASURES)
-	fftw_free(run_data->tot_energy);
-	fftw_free(run_data->tot_enstr);
-	fftw_free(run_data->tot_palin);
-	fftw_free(run_data->enrg_diss);
-	fftw_free(run_data->enst_diss);
-	#endif
-	#if defined(__ENST_FLUX)
-	fftw_free(run_data->enst_flux_sbst);
-	fftw_free(run_data->enst_diss_sbst);
-	#endif
-	#if defined(__ENRG_FLUX)
-	fftw_free(run_data->enrg_flux_sbst);
-	fftw_free(run_data->enrg_diss_sbst);
-	#endif
-	#if defined(__ENRG_SPECT)
-	fftw_free(run_data->enrg_spect);
-	#endif
-	#if defined(__ENRG_FLUX_SPECT)
-	fftw_free(run_data->enrg_flux_spect);
-	#endif
-	#if defined(__ENST_SPECT)
-	fftw_free(run_data->enst_spect);
-	#endif
-	#if defined(__ENST_FLUX_SPECT)
-	fftw_free(run_data->enst_flux_spect);
-	#endif
+	// #if defined(__SYS_MEASURES)
+	// fftw_free(run_data->tot_energy);
+	// fftw_free(run_data->tot_enstr);
+	// fftw_free(run_data->tot_palin);
+	// fftw_free(run_data->enrg_diss);
+	// fftw_free(run_data->enst_diss);
+	// #endif
+	// #if defined(__ENST_FLUX)
+	// fftw_free(run_data->enst_flux_sbst);
+	// fftw_free(run_data->enst_diss_sbst);
+	// #endif
+	// #if defined(__ENRG_FLUX)
+	// fftw_free(run_data->enrg_flux_sbst);
+	// fftw_free(run_data->enrg_diss_sbst);
+	// #endif
+	// #if defined(__ENRG_SPECT)
+	// fftw_free(run_data->enrg_spect);
+	// #endif
+	// #if defined(__ENRG_FLUX_SPECT)
+	// fftw_free(run_data->enrg_flux_spect);
+	// #endif
+	// #if defined(__ENST_SPECT)
+	// fftw_free(run_data->enst_spect);
+	// #endif
+	// #if defined(__ENST_FLUX_SPECT)
+	// fftw_free(run_data->enst_flux_spect);
+	// #endif
 	#if defined(TESTING)
 	fftw_free(run_data->tg_soln);
 	#endif
@@ -799,8 +854,10 @@ void FreeMemory(RK_data_struct* RK_data) {
 	// ------------------------
 	// Destroy FFTW plans 
 	// ------------------------
+	#if defined(__VORT_REAL) || defined(__VORT_FOUR)
 	fftw_destroy_plan(sys_vars->fftw_2d_dft_r2c);
 	fftw_destroy_plan(sys_vars->fftw_2d_dft_c2r);
+	#endif
 	fftw_destroy_plan(sys_vars->fftw_2d_dft_batch_r2c);
 	fftw_destroy_plan(sys_vars->fftw_2d_dft_batch_c2r);
 }

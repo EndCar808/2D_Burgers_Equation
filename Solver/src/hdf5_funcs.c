@@ -107,6 +107,89 @@ void CreateOutputFilesWriteICs(const long int* N, double dt) {
         spectra_group_id = CreateGroup(file_info->spectra_file_handle, file_info->spectra_file_name, group_name, 0.0, dt, 0);
     }
     #endif
+
+    #if !defined(TRANSIENTS)
+    // Create dimension arrays
+    #if defined(__VORT_FOUR) || defined(__VORT_REAL)
+    static const int d_set_rank2D = 2;
+    hsize_t dset_dims2D[d_set_rank2D];        // array to hold dims of the dataset to be created
+    hsize_t slab_dims2D[d_set_rank2D];        // Array to hold the dimensions of the hyperslab
+    hsize_t mem_space_dims2D[d_set_rank2D];   // Array to hold the dimensions of the memoray space - for real data this will be different to slab_dims due to 0 padding
+    #endif
+    static const int d_set_rank3D = 3;
+    hsize_t dset_dims3D[d_set_rank3D];        // array to hold dims of the dataset to be created
+    hsize_t slab_dims3D[d_set_rank3D];        // Array to hold the dimensions of the hyperslab
+    hsize_t mem_space_dims3D[d_set_rank3D];   // Array to hold the dimensions of the memoray space - for real data this will be different to slab_dims due to 0 padding
+
+    ///----------------------------- Fourier Velocities
+    #if defined(__MODES)
+    // Create dimension arrays
+    dset_dims3D[0]      = Nx;
+    dset_dims3D[1]      = Ny_Fourier;
+    dset_dims3D[2]      = SYS_DIM;
+    slab_dims3D[0]      = sys_vars->local_Nx;
+    slab_dims3D[1]      = Ny_Fourier;
+    slab_dims3D[2]      = SYS_DIM;
+    mem_space_dims3D[0] = sys_vars->local_Nx;
+    mem_space_dims3D[1] = Ny_Fourier;
+    mem_space_dims3D[2] = SYS_DIM;
+
+    // Write the real space vorticity
+    WriteDataFourier(0.0, 0, main_group_id, "u_hat", file_info->COMPLEX_DTYPE, d_set_rank3D, dset_dims3D, slab_dims3D, mem_space_dims3D, sys_vars->local_Nx_start, run_data->u_hat);
+    #endif
+
+    ///----------------------------- Real Space Velocities
+    #if defined(__REALSPACE)
+    // Transform velocities back to real space and normalize
+    fftw_mpi_execute_dft_c2r(sys_vars->fftw_2d_dft_batch_c2r, run_data->u_hat, run_data->u);
+    for (int i = 0; i < sys_vars->local_Nx; ++i) {
+        tmp = i * (Ny + 2);
+        for (int j = 0; j < Ny; ++j) {
+            indx = tmp + j;
+
+            // Normalize
+            run_data->u[SYS_DIM * indx + 0] *= 1.0 / (double) (Nx * Ny);
+            run_data->u[SYS_DIM * indx + 1] *= 1.0 / (double) (Nx * Ny);
+        }
+    }
+
+    // Specify dataset dimensions
+    dset_dims3D[0]    = Nx;
+    dset_dims3D[1]    = Ny;
+    dset_dims3D[2]    = SYS_DIM;
+    slab_dims3D[0]    = sys_vars->local_Nx;
+    slab_dims3D[1]    = Ny;
+    slab_dims3D[2]    = SYS_DIM;
+    mem_space_dims3D[0] = sys_vars->local_Nx;
+    mem_space_dims3D[1] = (Ny + 2);
+    mem_space_dims3D[2] = SYS_DIM;
+
+    // Write the real space vorticity
+    WriteDataReal(0.0, 0, main_group_id, "u", H5T_NATIVE_DOUBLE, d_set_rank3D, dset_dims3D, slab_dims3D, mem_space_dims3D, sys_vars->local_Nx_start, run_data->u);
+    #endif
+    #endif
+
+
+    // ------------------------------------
+    // Close Identifiers - also close file
+    // ------------------------------------
+    status = H5Pclose(plist_id);
+    status = H5Gclose(main_group_id);
+    status = H5Fclose(file_info->output_file_handle);
+    if (status < 0) {
+        fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to close output file ["CYAN"%s"RESET"] at: Iter = ["CYAN"%d"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", file_info->output_file_name, 0, 0.0);
+        exit(1);        
+    }
+    #if defined(__ENST_SPECT) || defined(__ENRG_SPECT) || defined(__ENST_FLUX_SPECT) || defined(__ENRG_FLUX_SPECT)
+    if (!sys_vars->rank) {
+        status = H5Gclose(spectra_group_id);
+        status = H5Fclose(file_info->spectra_file_handle);
+        if (status < 0) {
+            fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to close output file ["CYAN"%s"RESET"] at: Iter = ["CYAN"%d"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", file_info->spectra_file_name, 0, 0.0);
+            exit(1);        
+        }
+    }
+    #endif
 }
 /**
  * Function that creates the output file paths and directories
@@ -268,6 +351,168 @@ void GetOutputDirPath(void) {
     MPI_Barrier(MPI_COMM_WORLD);
 }
 /**
+ * Wrapper function that writes the data to file by openining it, creating a group for the current iteration and writing the data under this group. The file is then closed again 
+ * @param t     The current time of the simulation
+ * @param dt    The current timestep being used
+ * @param iters The current iteration
+ */
+void WriteDataToFile(double t, double dt, long int iters) {
+
+    // Initialize Variables
+    int tmp;
+    int indx;
+    char group_name[128];
+    const long int Nx         = sys_vars->N[0];
+    const long int Ny         = sys_vars->N[1];
+    const long int Ny_Fourier = sys_vars->N[1] / 2 + 1;
+    herr_t status;
+    hid_t main_group_id;
+    #if defined(__ENST_SPECT) || defined(__ENRG_SPECT) || defined(__ENST_FLUX_SPECT) || defined(__ENRG_FLUX_SPECT)
+    hid_t spectra_group_id;
+    #endif
+    hid_t plist_id;
+    #if defined(__VORT_FOUR) || defined(__VORT_REAL)
+    static const int d_set_rank2D = 2;
+    hsize_t dset_dims2D[d_set_rank2D];        // array to hold dims of the dataset to be created
+    hsize_t slab_dims2D[d_set_rank2D];        // Array to hold the dimensions of the hyperslab
+    hsize_t mem_space_dims2D[d_set_rank2D];   // Array to hold the dimensions of the memoray space - for real data this will be different to slab_dims due to 0 padding
+    #endif
+    static const int d_set_rank3D = 3;
+    hsize_t dset_dims3D[d_set_rank3D];        // array to hold dims of the dataset to be created
+    hsize_t slab_dims3D[d_set_rank3D];        // Array to hold the dimensions of the hyperslab
+    hsize_t mem_space_dims3D[d_set_rank3D];   // Array to hold the dimensions of the memoray space - for real data this will be different to slab_dims due to 0 padding
+    
+
+    // --------------------------------------
+    // Check if files exist and Open/Create
+    // --------------------------------------
+    // Create property list for setting parallel I/O access properties for file
+    plist_id = H5Pcreate(H5P_FILE_ACCESS);
+    H5Pset_fapl_mpio(plist_id, MPI_COMM_WORLD, MPI_INFO_NULL);
+
+    // Check if main file exists - open it if it does if not create it
+    if (access(file_info->output_file_name, F_OK) != 0) {
+        file_info->output_file_handle = H5Fcreate(file_info->output_file_name, H5F_ACC_TRUNC, H5P_DEFAULT, plist_id);
+        if (file_info->output_file_handle < 0) {
+            fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to create output file ["CYAN"%s"RESET"] at: Iter = ["CYAN"%ld"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", file_info->output_file_name, iters, t);
+            exit(1);
+        }
+    }
+    else {
+        // Open file with parallel I/O access properties
+        file_info->output_file_handle = H5Fopen(file_info->output_file_name, H5F_ACC_RDWR, plist_id);
+        if (file_info->output_file_handle < 0) {
+            fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to open output file ["CYAN"%s"RESET"] at: Iter = ["CYAN"%ld"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", file_info->output_file_name, iters, t);
+            exit(1);
+        }
+    }
+    H5Pclose(plist_id);
+
+    #if defined(__ENST_SPECT) || defined(__ENRG_SPECT) || defined(__ENST_FLUX_SPECT) || defined(__ENRG_FLUX_SPECT)
+    if (!sys_vars->rank) {
+        // Check if spectra file exists - open it if it does if not create it
+        if (access(file_info->output_file_name, F_OK) != 0) {
+            file_info->spectra_file_handle = H5Fcreate(file_info->spectra_file_name, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+            if (file_info->spectra_file_handle < 0) {
+                fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to create spectra file ["CYAN"%s"RESET"] at: Iter = ["CYAN"%ld"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", file_info->spectra_file_name, iters, t);
+                exit(1);
+            }
+        }
+        else {
+            // Open file with parallel I/O access properties
+            file_info->spectra_file_handle = H5Fopen(file_info->spectra_file_name, H5F_ACC_RDWR, H5P_DEFAULT);
+            if (file_info->spectra_file_handle < 0) {
+                fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to open spectra file ["CYAN"%s"RESET"] at: Iter = ["CYAN"%ld"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", file_info->spectra_file_name, iters, t);
+                exit(1);
+            }
+        }
+    }
+    #endif
+
+
+    // -------------------------------
+    // Create Group 
+    // -------------------------------
+    // Initialize Group Name
+    sprintf(group_name, "/Iter_%05d", (int)iters);
+    
+    // Create group for the current iteration data
+    main_group_id = CreateGroup(file_info->output_file_handle, file_info->output_file_name, group_name, t, dt, iters);
+    #if defined(__ENST_SPECT) || defined(__ENRG_SPECT) || defined(__ENST_FLUX_SPECT) || defined(__ENRG_FLUX_SPECT)
+    if (!sys_vars->rank) {
+        spectra_group_id = CreateGroup(file_info->spectra_file_handle, file_info->spectra_file_name, group_name, t, dt, iters);
+    }
+    #endif
+
+    ///------------------------------ Fourier space velocities
+    #if defined(__MODES)
+    // Create dimension arrays
+    dset_dims3D[0]      = Nx;
+    dset_dims3D[1]      = Ny_Fourier;
+    dset_dims3D[2]      = SYS_DIM;
+    slab_dims3D[0]      = sys_vars->local_Nx;
+    slab_dims3D[1]      = Ny_Fourier;
+    slab_dims3D[2]      = SYS_DIM;
+    mem_space_dims3D[0] = sys_vars->local_Nx;
+    mem_space_dims3D[1] = Ny_Fourier;
+    mem_space_dims3D[2] = SYS_DIM;
+
+    // Write the real space vorticity
+    WriteDataFourier(t, (int)iters, main_group_id, "u_hat", file_info->COMPLEX_DTYPE, d_set_rank3D, dset_dims3D, slab_dims3D, mem_space_dims3D, sys_vars->local_Nx_start, run_data->u_hat);
+    #endif
+
+    ///------------------------------- Real space Velocities
+    #if defined(__REALSPACE)
+    // Transform velocities back to real space and normalize
+    fftw_mpi_execute_dft_c2r(sys_vars->fftw_2d_dft_batch_c2r, run_data->u_hat, run_data->u);
+    for (int i = 0; i < sys_vars->local_Nx; ++i) {
+        tmp = i * (Ny + 2);
+        for (int j = 0; j < Ny; ++j) {
+            indx = tmp + j;
+
+            // Normalize
+            run_data->u[SYS_DIM * indx + 0] *= 1.0 / (double) (Nx * Ny);
+            run_data->u[SYS_DIM * indx + 1] *= 1.0 / (double) (Nx * Ny);
+        }
+    }
+
+    // Specify dataset dimensions
+    dset_dims3D[0]      = Nx;
+    dset_dims3D[1]      = Ny;
+    dset_dims3D[2]      = SYS_DIM;
+    slab_dims3D[0]      = sys_vars->local_Nx;
+    slab_dims3D[1]      = Ny;
+    slab_dims3D[2]      = SYS_DIM;
+    mem_space_dims3D[0] = sys_vars->local_Nx;
+    mem_space_dims3D[1] = (Ny + 2);
+    mem_space_dims3D[2] = SYS_DIM;
+
+    // Write the real space vorticity
+    WriteDataReal(t, (int)iters, main_group_id, "u", H5T_NATIVE_DOUBLE, d_set_rank3D, dset_dims3D, slab_dims3D, mem_space_dims3D, sys_vars->local_Nx_start, run_data->u);
+    #endif
+
+
+    // -------------------------------
+    // Close identifiers and File
+    // -------------------------------
+    status = H5Gclose(main_group_id);
+    status = H5Fclose(file_info->output_file_handle);
+    if (status < 0) {
+        fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to close output file ["CYAN"%s"RESET"] at: Iter = ["CYAN"%ld"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", file_info->output_file_name, iters, t);
+        exit(1);
+    }
+    #if defined(__ENST_SPECT) || defined(__ENRG_SPECT) || defined(__ENST_FLUX_SPECT) || defined(__ENRG_FLUX_SPECT)
+    if (!sys_vars->rank) {
+        status = H5Gclose(spectra_group_id);
+        status = H5Fclose(file_info->spectra_file_handle);
+        if (status < 0) {
+            fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to close output file ["CYAN"%s"RESET"] at: Iter = ["CYAN"%ld"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", file_info->spectra_file_name, iters, t);
+            exit(1);        
+        }
+    }
+    #endif
+}    
+/**
  * Wrapper function used to create a Group for the current iteration in the HDF5 file 
  * @param  group_name The name of the group - will be the Iteration counter
  * @param  t          The current time in the simulation
@@ -341,6 +586,314 @@ hid_t CreateGroup(hid_t file_handle, char* filename, char* group_name, double t,
     return group_id;
 }
 /**
+ * Function that creates a dataset in a created Group in the output file and writes the data to this dataset for Fourier Space arrays
+ * @param group_id       The identifier of the Group for the current iteration to write the data to
+ * @param dset_name      The name of the dataset to write
+ * @param dtype          The datatype of the data being written
+ * @param dset_dims      Array containg the dimensions of the dataset to create
+ * @param slab_dims      Array containing the dimensions of the hyperslab to select
+ * @param mem_space_dims Array containing the dimensions of the memory space that will be written to file
+ * @param offset_Nx      The offset in the dataset that each process will write to
+ * @param data           The data being written to file
+ */
+void WriteDataFourier(double t, int iters, hid_t group_id, char* dset_name, hid_t dtype, int dset_rank, hsize_t* dset_dims, hsize_t* slab_dims, hsize_t* mem_space_dims, int offset_Nx, fftw_complex* data) {
+
+    // Initialize variables
+    hid_t plist_id;
+    hid_t dset_space;
+    hid_t file_space;
+    hid_t mem_space;
+    const int Dims = dset_rank;
+    hsize_t dims[Dims];          // array to hold dims of the dataset to be created
+    hsize_t mem_dims[Dims];      // Array to hold the dimensions of the memory space - this will be diferent to slab dims for real data due to zero
+    hsize_t mem_offset[Dims];    // Array to hold the offset in eahc direction for the local hypslabs to write from
+    hsize_t slabsize[Dims];      // Array holding the size of the hyperslab in each direction
+    hsize_t dset_offset[Dims];   // Array containig the offset positions in the file for each process to write to
+    hsize_t dset_slabsize[Dims]; // Array containing the size of the slabbed that is being written to in file   
+
+    // -------------------------------
+    // Create Dataset In Group
+    // -------------------------------
+    // Create the dataspace for the data set
+    for (int i = 0; i < dset_rank; ++i) {
+        dims[i] = dset_dims[i];
+    }
+    dset_space = H5Screate_simple(Dims, dims, NULL); 
+    if (dset_space < 0) {
+        fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to set dataspace for dataset ["CYAN"%s"RESET"] at: Iter = ["CYAN"%d"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", dset_name, iters, t);
+        exit(1);
+    }
+
+    // Create the file space id for the dataset in the group
+    file_space = H5Dcreate(group_id, dset_name, dtype, dset_space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+
+    // -------------------------------
+    // Select Hyperslab in Memory
+    // -------------------------------
+    // Setup for memory hyperslab selection dimensions
+    for (int i = 0; i < dset_rank; ++i) {
+        slabsize[i]   = slab_dims[i];
+        mem_offset[i] = 0;
+        mem_dims[i]   = mem_space_dims[i];
+    }
+    
+    // Create the memory space for the hyperslabs for each process
+    mem_space = H5Screate_simple(Dims, mem_dims, NULL);
+
+    // Select local hyperslab from the memoryspace (slab size adjusted to ignore 0 padding) - local to each process
+    if ((H5Sselect_hyperslab(mem_space, H5S_SELECT_SET, mem_offset, NULL, slabsize, NULL)) < 0 ) {
+        fprintf(stderr, "\n["RED"ERROR"RESET"] --- unable to select local hyperslab for datset ["CYAN"%s"RESET"] at: Iter = ["CYAN"%d"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", dset_name, iters, t);
+        exit(1);        
+    }
+
+    // -------------------------------
+    // Select Hyperslab in File
+    // -------------------------------
+    // Setup for file hyperslab selection dimensions
+    for (int i = 0; i < dset_rank; ++i) {
+        dset_offset[i]   = 0;
+        dset_slabsize[i] = slab_dims[i];
+    }
+    dset_offset[0]   = offset_Nx;
+
+    // Select the hyperslab in the dataset on file to write to
+    if ((H5Sselect_hyperslab(dset_space, H5S_SELECT_SET, dset_offset, NULL, dset_slabsize, NULL)) < 0 ) {
+        fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to select hyperslab in file for datset ["CYAN"%s"RESET"] at: Iter = ["CYAN"%d"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", dset_name, iters, t);
+        exit(1);        
+    }
+
+    // --------------------------------------
+    // Set Up Collective Write & Write Data
+    // --------------------------------------
+    // Set up Collective write property
+    plist_id = H5Pcreate(H5P_DATASET_XFER);
+    H5Pset_dxpl_mpio(plist_id, H5FD_MPIO_COLLECTIVE);
+
+    // Write data to file
+    if ((H5Dwrite(file_space, dtype, mem_space, dset_space, plist_id, data)) < 0 ) {
+        fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to write data to datset ["CYAN"%s"RESET"] at: Iter = ["CYAN"%d"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", dset_name, iters, t);
+        exit(1);        
+    }
+
+    // -------------------------------
+    // Close identifiers
+    // -------------------------------
+    H5Pclose(plist_id);
+    H5Dclose(file_space);
+    H5Sclose(dset_space);
+    H5Sclose(mem_space);
+}
+/**
+ * Function that creates a dataset in a created Group in the output file and writes the data to this dataset for Real Space arrays
+ * @param group_id       The identifier of the Group for the current iteration to write the data to
+ * @param dset_name      The name of the dataset to write
+ * @param dtype          The datatype of the data being written
+ * @param dset_dims      Array containg the dimensions of the dataset to create
+ * @param slab_dims      Array containing the dimensions of the hyperslab to select
+ * @param mem_space_dims Array containing the dimensions of the memory space that will be written to file
+ * @param offset_Nx      The offset in the dataset that each process will write to
+ * @param data           The data being written to file
+ */
+void WriteDataReal(double t, int iters, hid_t group_id, char* dset_name, hid_t dtype, int dset_rank, hsize_t* dset_dims, hsize_t* slab_dims, hsize_t* mem_space_dims, int offset_Nx, double* data) {
+
+    // Initialize variables
+    hid_t plist_id;
+    hid_t dset_space;
+    hid_t file_space;
+    hid_t mem_space;
+    const int Dims = dset_rank;
+    hsize_t dims[Dims];          // array to hold dims of the dataset to be created
+    hsize_t mem_dims[Dims];      // Array to hold the dimensions of the memory space - this will be diferent to slab dims for real data due to zero
+    hsize_t mem_offset[Dims];    // Array to hold the offset in each direction for the local hypslabs to write from
+    hsize_t slabsize[Dims];      // Array holding the size of the hyperslab in each direction
+    hsize_t dset_offset[Dims];   // Array containig the offset positions in the file for each process to write to
+    hsize_t dset_slabsize[Dims]; // Array containing the size of the slabs that is being written to in file 
+
+    // -------------------------------
+    // Create Dataset In Group
+    // -------------------------------
+    // Create the dataspace for the data set
+    for (int i = 0; i < dset_rank; ++i) {
+        dims[i] = dset_dims[i];
+    }
+    dset_space = H5Screate_simple(Dims, dims, NULL); 
+    if (dset_space < 0) {
+        fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to set dataspace for dataset: ["CYAN"%s"RESET"] at: Iter = ["CYAN"%d"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", dset_name, iters, t);
+        exit(1);
+    }   
+
+    // Create the file space id for the dataset in the group
+    file_space = H5Dcreate(group_id, dset_name, H5T_NATIVE_DOUBLE, dset_space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+
+    // -------------------------------
+    // Select Hyperslab in Memory
+    // -------------------------------
+    // Setup for memory hyperslab selection dimensions
+    for (int i = 0; i < dset_rank; ++i) {
+        slabsize[i]   = slab_dims[i];
+        mem_offset[i] = 0;
+        mem_dims[i]   = mem_space_dims[i];
+    }
+    
+    // Create the memory space for the hyperslabs for each process - reset second dimension for hyperslab selection to ignore padding
+    mem_space = H5Screate_simple(Dims, mem_dims, NULL);
+
+    // Select local hyperslab from the memoryspace (slab size adjusted to ignore 0 padding) - local to each process
+    if ((H5Sselect_hyperslab(mem_space, H5S_SELECT_SET, mem_offset, NULL, slabsize, NULL)) < 0 ) {
+        fprintf(stderr, "\n["RED"ERROR"RESET"] --- unable to select local hyperslab for datset ["CYAN"%s"RESET"] at: Iter = ["CYAN"%d"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", dset_name, iters, t);
+        exit(1);        
+    }
+
+    // -------------------------------
+    // Select Hyperslab in File
+    // -------------------------------
+    // Set up file hyperslab selection dimensions
+    for (int i = 0; i < dset_rank; ++i) {
+        dset_offset[i]   = 0;
+        dset_slabsize[i] = slab_dims[i];
+    }
+    dset_offset[0]   = offset_Nx;
+
+    // Select the hyperslab in the dataset on file to write to
+    if ((H5Sselect_hyperslab(dset_space, H5S_SELECT_SET, dset_offset, NULL, dset_slabsize, NULL)) < 0 ) {
+        fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to select hyperslab in file for datset ["CYAN"%s"RESET"] at: Iter = ["CYAN"%d"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", dset_name, iters, t);
+        exit(1);        
+    }
+
+    // --------------------------------------
+    // Set Up Collective Write & Write Data
+    // --------------------------------------
+    // Set up Collective write property
+    plist_id = H5Pcreate(H5P_DATASET_XFER);
+    H5Pset_dxpl_mpio(plist_id, H5FD_MPIO_COLLECTIVE);
+
+    // Write data to file
+    if ((H5Dwrite(file_space, dtype, mem_space, dset_space, plist_id, data)) < 0 ) {
+        fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to write data to datset ["CYAN"%s"RESET"] at: Iter = ["CYAN"%d"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", dset_name, iters, t);
+        exit(1);        
+    }
+
+    // -------------------------------
+    // Close identifiers
+    // -------------------------------
+    H5Pclose(plist_id);
+    H5Dclose(file_space);
+    H5Sclose(dset_space);
+    H5Sclose(mem_space);
+}
+/**
+ * Wrapper function that writes all the non-slabbed/chunk datasets to file after integeration has finished - to do so the file must be reponed 
+ * with the right read/write permissions and normal I/0 access properties -> otherwise writing to file in a non MPI way would not work
+ * @param N              Array containing the dimensions of the system
+ * @param iters          The number of iterations performed by the simulation 
+ * @param save_data_indx The number of saving steps performed by the simulation
+ */
+void FinalWriteAndCloseOutputFile(const long int* N, int iters, int save_data_indx) {
+
+    // Initialize Variables
+    const long int Nx         = N[0];
+    const long int Ny         = N[1];
+    const long int Ny_Fourier = Ny / 2 + 1;
+    herr_t status;
+    static const hsize_t D1 = 1;
+    hsize_t dims1D[D1];
+
+    // Record total iterations
+    sys_vars->tot_iters      = (long int)iters - 1;
+    sys_vars->tot_save_steps = (long int)save_data_indx - 1;
+
+    /////////////////////////////////
+    //// Repon and Write Datasets
+    /////////////////////////////////
+    // Repon Output file with read/write permissions
+    if (!(sys_vars->rank)) {
+        file_info->output_file_handle = H5Fopen(file_info->output_file_name, H5F_ACC_RDWR , H5P_DEFAULT);
+        if (file_info->output_file_handle < 0) {
+            fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to reopen output file for writing non chunked/slabbed datasets! \n-->>Exiting....\n");
+            exit(1);
+        }
+    }
+
+    // -------------------------------
+    // Write Wavenumbers
+    // -------------------------------
+    #if defined(__WAVELIST)
+    // Allocate array to gather the wavenumbers from each of the local arrays - in the x direction
+    int* k0 = (int* )fftw_malloc(sizeof(int) * Nx);
+    MPI_Gather(run_data->k[0], sys_vars->local_Nx, MPI_INT, k0, sys_vars->local_Nx, MPI_INT, 0, MPI_COMM_WORLD); 
+
+    // Write to file
+    if (!(sys_vars->rank)) {
+        dims1D[0] = Nx;
+        if ( (H5LTmake_dataset(file_info->output_file_handle, "kx", D1, dims1D, H5T_NATIVE_INT, k0)) < 0) {
+            printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"]\n", "kx");
+        }
+        dims1D[0] = Ny_Fourier;
+        if ( (H5LTmake_dataset(file_info->output_file_handle, "ky", D1, dims1D, H5T_NATIVE_INT, run_data->k[1])) < 0) {
+            printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"]\n", "ky");
+        }
+    }
+    fftw_free(k0);
+    #endif
+
+    // -------------------------------
+    // Write Collocation Points
+    // -------------------------------
+    #if defined(__COLLOC_PTS)
+    // Allocate array to gather the collocation points from each of the local arrays
+    double* x0 = (double* )fftw_malloc(sizeof(double) * Nx);
+    MPI_Gather(run_data->x[0], sys_vars->local_Nx, MPI_DOUBLE, x0, sys_vars->local_Nx, MPI_DOUBLE, 0, MPI_COMM_WORLD); 
+
+    // Write to file
+    if (!(sys_vars->rank)) {
+        dims1D[0] = Nx;
+        if ( (H5LTmake_dataset(file_info->output_file_handle, "x", D1, dims1D, H5T_NATIVE_DOUBLE, x0)) < 0) {
+            printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"]\n", "x");
+        }
+        dims1D[0] = Ny;
+        if ( (H5LTmake_dataset(file_info->output_file_handle, "y", D1, dims1D, H5T_NATIVE_DOUBLE, run_data->x[1]))< 0) {
+            printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"]\n", "y");
+        }
+    }
+    fftw_free(x0);
+    #endif
+
+    // // -------------------------------
+    // // Write System Measures
+    // // -------------------------------
+    // // Time
+    // #if defined(__TIME)
+    // // Time array only on rank 0
+    // if (!(sys_vars->rank)) {
+    //     dims1D[0] = sys_vars->num_print_steps;
+    //     if ( (H5LTmake_dataset(file_info->output_file_handle, "Time", D1, dims1D, H5T_NATIVE_DOUBLE, run_data->time)) < 0) {
+    //         printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"]\n", "Time");
+    //     }
+    // }
+    // #endif
+
+    // -----------------------------------
+    // Close Files for the final time
+    // -----------------------------------
+    if (!(sys_vars->rank)) {
+        status = H5Fclose(file_info->output_file_handle);
+        if (status < 0) {
+            fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to close main output file: "CYAN"%s"RESET" \n-->> Exiting....\n", file_info->output_file_name);
+            exit(1);
+        }
+    }
+    #if defined(DEBUG)
+    if (!sys_vars->rank) {
+        // Close test / debug file
+        H5Fclose(file_info->test_file_handle);
+    }
+    #endif
+    #if defined(__VORT_FOUR) || defined(__MODES)
+    // Close the complex datatype identifier
+    H5Tclose(file_info->COMPLEX_DTYPE);
+    #endif
+}
+/**
  * Function to create a HDF5 datatype for complex data
  */
 hid_t CreateComplexDatatype(void) {
@@ -362,14 +915,14 @@ hid_t CreateComplexDatatype(void) {
     // Insert the real part of the datatype
     status = H5Tinsert(dtype, "r", offsetof(complex_type_tmp,re), H5T_NATIVE_DOUBLE);
     if (status < 0) {
-        fprintf(stderr, "\n["RED"ERROR"RESET"] --- Could not insert real part for the Complex Compound Datatype!!\nExiting...\n");
+        fprintf(stderr, "\n["RED"ERROR"RESET"] --- Could not insert real part for the Complex Compound Datatype!!\n-->> Exiting...\n");
         exit(1);
     }
 
     // Insert the imaginary part of the datatype
     status = H5Tinsert(dtype, "i", offsetof(complex_type_tmp,im), H5T_NATIVE_DOUBLE);
     if (status < 0) {
-        fprintf(stderr, "\n["RED"ERROR"RESET"] --- Could not insert imaginary part for the Complex Compound Datatype! \n-->>Exiting...\n");
+        fprintf(stderr, "\n["RED"ERROR"RESET"] --- Could not insert imaginary part for the Complex Compound Datatype!!\n-->> Exiting...\n");
         exit(1);
     }
 
