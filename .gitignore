@@ -50,3 +50,16 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+## Data
+Data/Tmp/*
+Data/Test/*
+
+## Objects Dirs
+Solver/obj/*
+Solver/bin/*
+
+
+## Objects Dirs
+PostProcessing/obj/*
+PostProcessing/bin/*
