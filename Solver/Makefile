@@ -42,10 +42,10 @@ endif
 #  Executable flags
 # ---------------------------------------------------------------------
 # Flags to be passed to the solver for normal runs
-SOLVER_FLAGS := -D_VISCOUS -D__HYPER #-D__TRANSIENTS -D__ADAPTIVE_STEP -D__CFL_STEP -D_INVISCID
+SOLVER_FLAGS := -D__VISCOUS -D__HYPER #-D__EKMAN_DRAG -D__TRANSIENTS -D__ADAPTIVE_STEP -D__CFL_STEP -D_INVISCID
 
 # Phase only flags to be passed to solver
-PHASE_ONLY := -D_VISCOUS -D__HYPER -D__PHASE_ONLY -D__TRANSIENTS # -D_INVISCID
+PHASE_ONLY := -D__VISCOUS -D__HYPER -D__PHASE_ONLY -D__TRANSIENTS #-D__EKMAN_DRAG  -D__INVISCID
 
 # Dataset Flags to be passed to the solver
 DSET_FLAGS := -D__SYS_MEASURES #-D__ENST_FLUX -D__ENRG_FLUX -D__ENST_SPECT -D__ENRG_SPECT -D__ENST_FLUX_SPECT -D__ENRG_FLUX_SPECT -D__VORT_REAL -D__REALSPACE -D__MODES  

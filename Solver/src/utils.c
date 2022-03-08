@@ -36,6 +36,8 @@ int GetCMLArgs(int argc, char** argv) {
     int dim_flag        = 0;
     int force_flag      = 0;
     int output_dir_flag = 0;
+    int hyper_vis_flag  = 0;
+    int hyper_drag_flag = 0;
 
     // -------------------------------
     // Initialize Default Values
@@ -59,15 +61,19 @@ int GetCMLArgs(int argc, char** argv) {
     // Forcing
     strncpy(sys_vars->forcing, "NONE", 64); 
     sys_vars->force_k    = 0;
-    // System viscosity
+    // System viscosity parameters
     sys_vars->NU         = 1.0;
+    sys_vars->VIS_POW    = 2.0;
+    // Ekman drag parameters
+    sys_vars->EKMN_ALPHA = 0.0;
+    sys_vars->EKMN_ALPHA = -2.0;
     // Write to file every 
     sys_vars->SAVE_EVERY = 100;
 
     // -------------------------------
     // Parse CML Arguments
     // -------------------------------
-    while ((c = getopt(argc, argv, "o:h:n:s:e:t:v:i:c:p:f:z:")) != -1) {
+    while ((c = getopt(argc, argv, "o:h:n:s:e:t:v:i:c:p:f:z:a:")) != -1) {
         switch(c) {
             case 'o':
                 if (output_dir_flag == 0) {
@@ -137,16 +143,50 @@ int GetCMLArgs(int argc, char** argv) {
                 }
                 break;
             case 'v':
-                // Read in the viscosity
-                sys_vars->NU = atof(optarg);
-                if (sys_vars->NU <= 0) {
-                    fprintf(stderr, "\n["RED"ERROR"RESET"] Parsing of Command Line Arguements Failed: The provided viscosity: [%lf] must be strictly positive\n-->> Exiting!\n\n", sys_vars->NU);       
-                    exit(1);
+                if (hyper_vis_flag == 0) {
+                    // Read in the viscosity
+                    sys_vars->NU = atof(optarg);
+                    if (sys_vars->NU <= 0) {
+                        fprintf(stderr, "\n["RED"ERROR"RESET"] Parsing of Command Line Arguements Failed: The provided viscosity: [%lf] must be strictly positive\n-->> Exiting!\n\n", sys_vars->NU);       
+                        exit(1);
+                    }
+                    hyper_vis_flag++;
+                }
+                else if (hyper_vis_flag == 1) {
+                    // Read in the power for the hyper viscosity
+                    sys_vars->VIS_POW = atof(optarg);
+                    if (sys_vars->VIS_POW <= 0) {
+                        fprintf(stderr, "\n["RED"ERROR"RESET"] Parsing of Command Line Arguements Failed: The provided hyper viscosity power: [%lf] must be strictly positive\n-->> Exiting!\n\n", sys_vars->VIS_POW);       
+                        exit(1);
+                    }
+                }
+                break;
+            case 'a':
+                if (hyper_drag_flag == 0) {
+                    // Read in the Ekman drag coeficient
+                    sys_vars->EKMN_ALPHA = atof(optarg);
+                    if (sys_vars->EKMN_ALPHA <= 0) {
+                        fprintf(stderr, "\n["RED"ERROR"RESET"] Parsing of Command Line Arguements Failed: The provided Ekman drag: [%lf] must be strictly positive\n-->> Exiting!\n\n", sys_vars->EKMN_ALPHA);       
+                        exit(1);
+                    }
+                    hyper_drag_flag++;
+                }
+                else if (hyper_drag_flag == 1) {
+                    sys_vars->EKMN_POW = atof(optarg);
+                    if (sys_vars->EKMN_POW >= 0) {
+                        fprintf(stderr, "\n["RED"ERROR"RESET"] Parsing of Command Line Arguements Failed: The provided hyper drag pow: [%lf] must be strictly negative\n-->> Exiting!\n\n", sys_vars->EKMN_POW);       
+                        exit(1);
+                    }
                 }
                 break;
             case 'i':
                 // Read in the initial conditions
-                if (!(strcmp(optarg,"TG_VEL"))) {
+                if (!(strcmp(optarg,"HOPF_COLE"))) {
+                    // The initial condition for the Hopf-Cole transformation
+                    strncpy(sys_vars->u0, "HOPF_COLE", 64);
+                    break;
+                }
+                else if (!(strcmp(optarg,"TG_VEL"))) {
                     // The Taylor Green vortex - starting with the velocity
                     strncpy(sys_vars->u0, "TG_VEL", 64);
                     break;
@@ -212,6 +252,7 @@ int GetCMLArgs(int argc, char** argv) {
                 fprintf(stderr, "Use"YELLOW" -e"RESET" to specify the end time of the simulation\n");
                 fprintf(stderr, "Use"YELLOW" -h"RESET" to specify the timestep\n");
                 fprintf(stderr, "Use"YELLOW" -c"RESET" to specify the CFL constant for the adaptive stepping\n");
+                fprintf(stderr, "Use"YELLOW" -a"RESET" to specify the system Ekman drag\n");
                 fprintf(stderr, "Use"YELLOW" -v"RESET" to specify the system viscosity\n");
                 fprintf(stderr, "Use"YELLOW" -i"RESET" to specify the initial condition\n");
                 fprintf(stderr, "Use"YELLOW" -t"RESET" to specify the tag name to be used in the output file directory\n");
@@ -288,9 +329,16 @@ void PrintSimulationDetails(int argc, char** argv, double sim_time) {
     // System Params
     fprintf(sim_file, "Viscosity: %1.6lf\n", sys_vars->NU);
     fprintf(sim_file, "Re: %5.1lf\n", 1.0 / sys_vars->NU);
+    #if defined(__EKMN_DRAG)
+    fprintf(sim_file, "Ekman Drag: YES\n");
+    fprintf(sim_file, "Ekman Alpha: %1.4lf\n", sys_vars->EKMN_ALPHA);
+    fprintf(sim_file, "Ekman Power: %d\n", sys_vars->EKMN_POW);
+    #else
+    fprintf(sim_file, "Ekman Drag: NO\n");
+    #endif
     #if defined(__HYPER)
     fprintf(sim_file, "Hyperviscosity: YES\n");
-    fprintf(sim_file, "Hyperviscosity Power: %1.1lf\n", VIS_POW);   
+    fprintf(sim_file, "Hyperviscosity Power: %1.1lf\n", sys_vars->VIS_POW);   
     #else
     fprintf(sim_file, "Hyperviscosity: NO\n");
     #endif

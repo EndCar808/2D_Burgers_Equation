@@ -116,12 +116,28 @@ void CreateOutputFilesWriteICs(const long int* N, double dt) {
     hsize_t slab_dims2D[d_set_rank2D];        // Array to hold the dimensions of the hyperslab
     hsize_t mem_space_dims2D[d_set_rank2D];   // Array to hold the dimensions of the memoray space - for real data this will be different to slab_dims due to 0 padding
     #endif
+    #if defined(__MODES) || defined(__REALSPACE)
     static const int d_set_rank3D = 3;
     hsize_t dset_dims3D[d_set_rank3D];        // array to hold dims of the dataset to be created
     hsize_t slab_dims3D[d_set_rank3D];        // Array to hold the dimensions of the hyperslab
     hsize_t mem_space_dims3D[d_set_rank3D];   // Array to hold the dimensions of the memoray space - for real data this will be different to slab_dims due to 0 padding
+    #endif
 
-    ///----------------------------- Fourier Velocities
+    ///--------------------------- Get the Fourier Velocities
+    #if defined(__MODES) || defined(__REALSPACE)
+    // Need to compute the Fourier velocities from the Fourier velocity potentials
+    for (int i = 0; i < sys_vars->local_Nx; ++i) {
+        tmp = i * Ny_Fourier;
+        for (int j = 0; j < Ny_Fourier; ++j) {
+            indx = tmp + j;
+
+            // Get the Fourier velocities
+            run_data->u_hat[SYS_DIM * indx + 0] = I * ((double) run_data->k[0][i]) * run_data->psi_hat[indx];
+            run_data->u_hat[SYS_DIM * indx + 1] = I * ((double) run_data->k[1][j]) * run_data->psi_hat[indx];
+        }
+    }
+    #endif
+    ///----------------------------- Write Fourier Velocities
     #if defined(__MODES)
     // Create dimension arrays
     dset_dims3D[0]      = Nx;
@@ -138,7 +154,7 @@ void CreateOutputFilesWriteICs(const long int* N, double dt) {
     WriteDataFourier(0.0, 0, main_group_id, "u_hat", file_info->COMPLEX_DTYPE, d_set_rank3D, dset_dims3D, slab_dims3D, mem_space_dims3D, sys_vars->local_Nx_start, run_data->u_hat);
     #endif
 
-    ///----------------------------- Real Space Velocities
+    ///----------------------------- Write Real Space Velocities
     #if defined(__REALSPACE)
     // Transform velocities back to real space and normalize
     fftw_mpi_execute_dft_c2r(sys_vars->fftw_2d_dft_batch_c2r, run_data->u_hat, run_data->u);
@@ -377,11 +393,12 @@ void WriteDataToFile(double t, double dt, long int iters) {
     hsize_t slab_dims2D[d_set_rank2D];        // Array to hold the dimensions of the hyperslab
     hsize_t mem_space_dims2D[d_set_rank2D];   // Array to hold the dimensions of the memoray space - for real data this will be different to slab_dims due to 0 padding
     #endif
+    #if defined(__MODES) || defined(__REALSPACE)
     static const int d_set_rank3D = 3;
     hsize_t dset_dims3D[d_set_rank3D];        // array to hold dims of the dataset to be created
     hsize_t slab_dims3D[d_set_rank3D];        // Array to hold the dimensions of the hyperslab
     hsize_t mem_space_dims3D[d_set_rank3D];   // Array to hold the dimensions of the memoray space - for real data this will be different to slab_dims due to 0 padding
-    
+    #endif    
 
     // --------------------------------------
     // Check if files exist and Open/Create
@@ -441,6 +458,24 @@ void WriteDataToFile(double t, double dt, long int iters) {
     #if defined(__ENST_SPECT) || defined(__ENRG_SPECT) || defined(__ENST_FLUX_SPECT) || defined(__ENRG_FLUX_SPECT)
     if (!sys_vars->rank) {
         spectra_group_id = CreateGroup(file_info->spectra_file_handle, file_info->spectra_file_name, group_name, t, dt, iters);
+    }
+    #endif
+
+    // -------------------------------
+    // Write Data
+    // -------------------------------
+    ///--------------------------- Get the Fourier Velocities
+    #if defined(__MODES) || defined(__REALSPACE)
+    // Need to compute the Fourier velocities from the Fourier velocity potentials
+    for (int i = 0; i < sys_vars->local_Nx; ++i) {
+        tmp = i * Ny_Fourier;
+        for (int j = 0; j < Ny_Fourier; ++j) {
+            indx = tmp + j;
+
+            // Get the Fourier velocities
+            run_data->u_hat[SYS_DIM * indx + 0] = I * ((double) run_data->k[0][i]) * run_data->psi_hat[indx];
+            run_data->u_hat[SYS_DIM * indx + 1] = I * ((double) run_data->k[1][j]) * run_data->psi_hat[indx];
+        }
     }
     #endif
 

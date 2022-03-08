@@ -63,7 +63,9 @@
 // Solver Types
 #if defined(__HYPER)
 #define HYPER_VISC				// Turned on hyperviscosity if called for at compilation time
-#define VIS_POW 2.0             // The power of the hyperviscosity -> 1.0 means no hyperviscosity
+#endif
+#if defined(__EKMN_DRAG)
+#define EKMN_DRAG     			// Turn on Ekman drag if called for at compilation time
 #endif
 #if defined(__PHASE_ONLY)		// Turn on phase only mode if called for at compilation
 #define PHASE_ONLY
@@ -167,6 +169,9 @@ typedef struct system_vars_struct {
 	int print_every;                    // Records how many iterations are performed before printing to file
 	double CFL_CONST;					// The CFL constant for the adaptive step
 	double NU;							// The viscosity
+	double VIS_POW;						// The power of the hyperviscosity
+	double EKMN_ALPHA;					// The Ekman drag coeficient
+	double EKMN_POW;					// The Ekman drag power
 	int SAVE_EVERY; 					// For specifying how often to print
 } system_vars_struct;
 
@@ -174,10 +179,12 @@ typedef struct system_vars_struct {
 typedef struct runtime_data_struct {
 	double* x[SYS_DIM];       // Array to hold collocation pts
 	int* k[SYS_DIM];		  // Array to hold wavenumbers
+	fftw_complex* psi_hat;    // Fourier space velocity potential
 	fftw_complex* w_hat;      // Fourier space vorticity
 	fftw_complex* u_hat;      // Fourier space velocity
 	fftw_complex* rhs; 		  // Array to hold the RHS of the equation of motion
 	fftw_complex* nonlinterm; // Array to hold the nonlinear term
+	double* psi;			  // Real space velocity potential
 	double* w;				  // Real space vorticity
 	double* u;				  // Real space velocity
 	double* a_k;			  // Fourier vorticity amplitudes
@@ -202,17 +209,18 @@ typedef struct runtime_data_struct {
 
 // Runge-Kutta Integration struct
 typedef struct RK_data_struct {
-	fftw_complex* RK1;		  // Array to hold the result of the first stage
-	fftw_complex* RK2;		  // Array to hold the result of the second stage
-	fftw_complex* RK3;		  // Array to hold the result of the third stage
-	fftw_complex* RK4;		  // Array to hold the result of the fourth stage
-	fftw_complex* RK5;		  // Array to hold the result of the fifth stage of RK5 scheme
-	fftw_complex* RK6;		  // Array to hold the result of the sixth stage of RK5 scheme
-	fftw_complex* RK7; 		  // Array to hold the result of the seventh stage of the Dormand Prince Scheme
-	fftw_complex* RK_tmp;	  // Array to hold the tempory updates to w_hat - input to RHS function
-	fftw_complex* w_hat_last; // Array to hold the values of the Fourier space vorticity from the previous iteration - used in the stepsize control in DP scheme
-	double* nabla_u;		  // Batch array the velocities in Real space for the nonlinear term
-	double DP_err; 			  // Variable to hold the error between the embedded methods in the Dormand Prince scheme
+	fftw_complex* RK1;		  	// Array to hold the result of the first stage
+	fftw_complex* RK2;		  	// Array to hold the result of the second stage
+	fftw_complex* RK3;		  	// Array to hold the result of the third stage
+	fftw_complex* RK4;		  	// Array to hold the result of the fourth stage
+	fftw_complex* RK5;		  	// Array to hold the result of the fifth stage of RK5 scheme
+	fftw_complex* RK6;		  	// Array to hold the result of the sixth stage of RK5 scheme
+	fftw_complex* RK7; 		  	// Array to hold the result of the seventh stage of the Dormand Prince Scheme
+	fftw_complex* RK_tmp;	  	// Array to hold the tempory updates to w_hat - input to RHS function
+	fftw_complex* w_hat_last; 	// Array to hold the values of the Fourier space vorticity from the previous iteration - used in the stepsize control in DP scheme
+	fftw_complex* grad_psi_hat;	// Batch array the derivatives of the velocity potential in Fourier space for the nonlinear term
+	double* grad_psi;		  	// Batch array the derivatives of the velocity potential in Real space for the nonlinear term
+	double DP_err; 			  	// Variable to hold the error between the embedded methods in the Dormand Prince scheme
 	int DP_fails;
 } RK_data_struct;
 
