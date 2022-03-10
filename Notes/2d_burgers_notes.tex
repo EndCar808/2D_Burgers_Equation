@@ -1,0 +1,216 @@
+%---------------------------PREAMBLE-------------------------------------------- %
+\documentclass[9pt]{article}
+% \documentclass[9pt]{amsart}
+% \documentclass[9pt]{revtex4-2}
+
+
+%------------------- PACKAGES 
+
+\usepackage{graphicx}
+	\graphicspath{ {plots/} }
+\usepackage{caption}
+\usepackage{epstopdf}
+\usepackage{pdfpages}
+\usepackage{array}
+\usepackage{ulem}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{amsthm}
+	\newtheorem{definition}{Definition}[section]
+	\newtheorem*{remark}{Remark}
+	\newtheorem{theorem}{Theorem}[section]
+	\newtheorem{corollary}{Corollary}[theorem]
+	\newtheorem{lemma}[theorem]{Lemma}
+\usepackage{mathrsfs}
+\usepackage{color}
+\usepackage{tikz}
+	\usetikzlibrary{tikzmark}
+\usepackage{enumerate}
+\usepackage{array}
+\usepackage{wrapfig}
+\usepackage{enumitem}
+\usepackage{bm}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\usepackage{authblk}
+\usepackage{cancel}
+\usepackage{listings}
+\usepackage[utf8]{inputenc}
+% \usepackage[table]{xcolor}
+
+\usepackage[unicode,psdextra, colorlinks=true, linkcolor=black, citecolor=black, urlcolor=blue, breaklinks]{hyperref}[2012/08/13]
+
+
+\setlength{\arrayrulewidth}{0.5mm}
+% \setlength{\tabcolsep}{10pt}
+\renewcommand{\arraystretch}{1.0}
+
+
+%------------------ USEFULL MACROS ------------------%
+%-- MISC
+\newcommand{\comment}[1]{}                                % for adding an inline comment
+\makeatletter 											  % This entire thing is for redefining *matrix environment in amsmath so that you can specify the line spacing in a matrix by  - \begin{pmatrix}[1.5]
+\renewcommand*\env@matrix[1][\arraystretch]{%             
+  \edef\arraystretch{#1}%
+  \hskip -\arraycolsep
+  \let\@ifnextchar\new@ifnextchar
+  \array{*\c@MaxMatrixCols c}}
+\makeatother
+
+%-- DERIVATIVES
+\newcommand{\der}[2]{\frac{\mathrm{d}#1}{\mathrm{d}#2}}          	 % first derivative
+\newcommand{\dder}[2]{\frac{\mathrm{d}^{2}#1}{\mathrm{d}#2^{2}}}	 % second derivative
+\newcommand{\nder}[3]{\frac{\mathrm{d}^{#3}#1}{\mathrm{d}#2^{#3}}}   % nth derivative
+\newcommand{\pder}[2]{\frac{\partial #1}{\partial #2}}               % first partial derivative
+\newcommand{\ppder}[2]{\frac{\partial^2 #1}{\partial {#2}^2}}        % second partial derivative
+\newcommand{\npder}[3]{\frac{\partial^{#3} #1}{\partial {#2}^{#3}}}  % second partial derivative
+
+%-- SUMMATION
+\newcommand{\sumk}[3]{\sum_{#1 = #2}^{#3}}        			% sum over #1 with limits #2 #3
+\newcommand{\sumkk}[2]{\sum_{#1, #2} }         	  			% sum over #1 and #2 no limits
+\newcommand{\sumkkdom}[3]{\sum_{#1 , #2 \in #3}}   			% sum over #1 and #2 with domain specified
+
+%-- RESEARCH RELATED
+\newcommand{\uhat}[1]{\hat{u}_{#1}}      				          % quick fourier mode
+\newcommand{\psihat}[1]{\hat{\psi}_{#1}}      				          % quick fourier mode
+\newcommand{\akak}[2]{a_{#1}a_{#2}}      				          % quick convolution amplitudes
+\newcommand{\akakak}[3]{\frac{a_{#1}a_{#2}}{a_{#3}}}      	      % quick convolution amplitudes
+\newcommand{\triadexpl}[3]{\phi_{#1} + \phi_{#2} - \phi_{#3}}      % quick triad explicitly
+\newcommand{\triad}[3]{\varphi_{#1, #2}^{#3}}                     % quick varphi triad
+\newcommand{\ii}{\mathrm{i}}      								  % imaginary i
+\newcommand{\e}{\mathrm{e}}      								  % e
+\newcommand{\Mod}[1]{\ (\mathrm{mod}\ #1)}
+\newcommand{\grad}[1]{\nabla{#1}}								% gradient operator
+\newcommand{\curl}[1]{\nabla \times {#1}}								% gradient operator
+\newcommand{\diverg}[1]{\nabla \cdot {#1}}			% divergence operator
+\newcommand{\bfu}{\mathbf{u}}											% vector u in bold font
+\newcommand{\omegahat}[1]{\hat{\omega}_{ \mathbf{#1} } }								% gradient operator
+\newcommand{\bfx}{\mathbf{x}}								% gradient operator
+\newcommand{\bfk}{\mathbf{k}}								% gradient operator
+\newcommand{\bfkn}[1]{\mathbf{k}_{#1}}								% gradient operator
+
+%-- COMMENTS / EDITING
+\newcommand{\TODO}[1]{\textcolor{red}{TODO: #1}}
+
+
+%-- CODE SNIPPETS
+\newcommand{\code}[1]{\texttt{#1}}
+
+
+
+
+
+%-------- PAGE STYLE & MARGIN SIZE
+% \pagestyle{plain} \setlength{\oddsidemargin}{0.05in}
+% \setlength{\evensidemargin}{0.05in} \setlength{\topmargin}{0in}
+% \setlength{\footskip}{1.05in} \setlength{\headsep}{0in}
+% \setlength{\textwidth}{6.4in} \setlength{\textheight}{8.25in}
+\usepackage[a4paper, margin=0.5cm]{geometry}
+
+
+
+
+\title{\textbf{Phase Dynamics: 2D Navier Stokes}}
+
+\author[$1$]{E. M. Carroll}
+\author[$1$]{M. D. Bustamante}
+\affil[$1$]{Department of Mathematics and Statistics, University College Dublin, Dublin, Ireland} 
+
+
+
+
+
+\begin{document}
+
+
+\maketitle	
+
+
+\section{2D Burgers Equation}
+
+
+The 2D Burgers equation is given as 
+
+\begin{align}
+\pder{\bfu}{t} + (\bfu \cdot \nabla)\bfu = \nu \nabla^2 \bfu
+\label{eq:burgers_eq}
+\end{align}
+where $\bfu$ is a periodic funciton such that $\bfu = \bfu(\bfx, t) = \bfu(\bfx + 2\pi, t)$, where $\bfx \in \Omega \subset \mathbb{R}^2$ and $t \in [0, T]$. We define the velocity potential scalar funciton $\psi(\bfx, t)$ such that 
+
+\begin{align}
+	\bfu = - \nabla \psi.
+	\label{eq:vel_pot}
+\end{align} 
+
+By rewritning the nonlinear term in (\ref{eq:burgers_eq}), using (\ref{eq:vel_pot}) and integrating over $\bfx$ we get 
+
+\begin{align}
+	-\pder{\nabla\psi}{t} + \frac{1}{2} \nabla |(-\nabla \psi)^2| &= -\nu \nabla^2\nabla\psi \notag \\
+	-\int_\Omega\pder{\nabla\psi}{t} \mathrm{d}\bfx + \frac{1}{2} \int_\Omega \nabla |(-\nabla \psi)^2| \mathrm{d}\bfx &= -\nu \int_\Omega \nabla^2\nabla\psi \mathrm{d}\bfx\notag \\
+	-\int_\Omega\nabla \pder{\psi}{t} \mathrm{d}\bfx + \frac{1}{2} \int_\Omega \nabla |(-\nabla \psi)^2| \mathrm{d}\bfx &= -\nu \int_\Omega \nabla\nabla^2\psi \mathrm{d}\bfx\notag \\
+	-\pder{\psi}{t} + \frac{1}{2} |(\nabla \psi)^2| &= -\nu \nabla^2 \psi \notag \\ 
+	\Rightarrow \pder{\psi}{t} &= \frac{1}{2} |(\nabla \psi)^2| + \nu \nabla^2 \psi  
+	\label{eq:burgers_eq_potential_form}
+\end{align}
+which is the ``potential'' form of Burgers equation. 
+
+\subsection{Burgers Equation in Fourier Space}
+
+We consider a Fourier decomposition in space of the scalar field 
+
+\begin{align}
+	\psi(\bfx, t) = \sum_{\bfk \in \mathbb{Z}} \psihat{\bfk}(t)\e^{\ii \bfk \cdot \bfx}
+	\label{eq:fourier_decomp}
+\end{align}
+
+Each term in (\ref{eq:burgers_eq_potential_form}) becomes
+
+\begin{align}
+	\pder{\psi}{t} = \sum_{\bfk \in \mathbb{Z}} \pder{\psihat{\bfk}}{t} \e^{\ii \bfk \cdot \bfx}
+\end{align}
+
+\begin{align}
+\frac{1}{2}\left[\left(\pder{\psi}{x}\right)^2 + \left(\pder{\psi}{y}\right)^2\right] &= \frac{1}{2} \left[ \left(\sum_{\bfkn{1} \in \mathbb{Z}}\ii k_{1x}\psihat{\bfkn{1}} \e^{\ii \bfkn{1} \cdot \bfx}\right)\left(\sum_{\bfkn{2} \in \mathbb{Z}}\ii k_{2x}\psihat{\bfkn{2}} \e^{\ii \bfkn{2} \cdot \bfx}\right) + \left(\sum_{\bfkn{1} \in \mathbb{Z}}\ii k_{1y}\psihat{\bfkn{1}} \e^{\ii \bfkn{1} \cdot \bfx}\right)\left(\sum_{\bfkn{2} \in \mathbb{Z}}\ii k_{2y}\psihat{\bfkn{2}} \e^{\ii \bfkn{2} \cdot \bfx}\right) \right] \notag \\ 
+&= -\frac{1}{2}\left[\sum_{\bfkn{1}, \bfkn{2} \in \mathbb{Z}}k_{1x}k_{2x}\psihat{\bfkn{1}} \psihat{\bfkn{2}}\e^{\ii (\bfkn{1} + \bfkn{2}) \cdot \bfx}+\sum_{\bfkn{1}, \bfkn{2} \in \mathbb{Z}}k_{1y}k_{2y}\psihat{\bfkn{1}} \psihat{\bfkn{2}}\e^{\ii (\bfkn{1} + \bfkn{2}) \cdot \bfx} \right] \notag \\
+&= -\frac{1}{2}\sum_{\bfkn{1}, \bfkn{2} \in \mathbb{Z}}(k_{1x}k_{2x} + k_{1y}k_{2y})\psihat{\bfkn{1}} \e^{\ii (\bfkn{1}+ \bfkn{2}) \cdot \bfx}
+\end{align}
+
+\begin{align}
+\nu \nabla^2 \psi = -\nu\sum_{\bfk \in \mathbb{Z}} |\bfk|^2\psihat{\bfk} \e^{\ii \bfk \cdot \bfx}
+\end{align}
+
+Combining them altogether and using the inverse Fourier transform we get
+
+\begin{align}
+	\frac{\mathrm{d} \psihat{\bfk}}{\mathrm{d}t} = - \frac{1}{2} \sum_{\bfkn{1}, \bfkn{2} \in \mathbb{Z}}(k_{1x}k_{2x} + k_{1y}k_{2y})\psihat{\bfkn{1}} \psihat{\bfkn{2}} \delta_{\bfkn{1}, \bfkn{2}}^{\bfk} - \nu \sum_{\bfk \in \mathbb{Z}} |\bfk|^2\psihat{\bfk}
+	\label{eq:burgers_eq_pot_fourier_space}
+\end{align}
+
+\subsection{Numerical Scheme}
+
+We apply a RK4CN scheme such that the RK4 part of the shceme is applied to the nonlinear term and the CN part is applied to the rest. Let $\psihat{\bfk}^n$ denote the solution at discretized time $t_n$, $\psihat{\bfk}^n = \psihat{\bfk}(\bfx, t_n)$, then we get the following update step
+
+\begin{align}
+	\frac{\psihat{\bfk}^{n + 1} - \psihat{\bfk}^n}{\Delta t} &= NL\left(\psihat{\bfk}^n\right) - \frac{\nu |\bfk|^2}{2} \left(\psihat{\bfk}^{n + 1} + \psihat{\bfk}^n\right) \notag \\
+	\psihat{\bfk}^{n + 1} - \psihat{\bfk}^n &= \Delta t NL\left(\psihat{\bfk}^n\right) - \frac{\nu \Delta t |\bfk|^2}{2} \left(\psihat{\bfk}^{n + 1} + \psihat{\bfk}^n\right) \notag \\
+	\psihat{\bfk}^{n + 1}\left(1 + \frac{\nu \Delta t |\bfk|^2}{2}\right) &= \Delta t NL\left(\psihat{\bfk}^n\right) +\left(1 -  \frac{\nu \Delta t |\bfk|^2}{2} \right)  \psihat{\bfk}^n \notag \\
+	\psihat{\bfk}^{n + 1} &= \left(\frac{2\Delta t}{1 +\nu \Delta t |\bfk|^2}\right) NL\left(\psihat{\bfk}^n\right) + \left(\frac{1 -  \nu \Delta t |\bfk|^2}{1 +\nu \Delta t |\bfk|^2} \right) \psihat{\bfk}^n 
+\end{align}
+where $\Delta t$ is the time increment and $NL\left(\psihat{\bfk}^n\right)$ is the result of applying the RK4 scheme on nonlinear term which is given by
+
+\begin{align}
+NL\left(\psihat{\bfk}^n\right) =\frac{1}{6} R_{1}+\frac{1}{3} R_{2}+\frac{1}{3} R_{3}+\frac{1}{6} R_{4}
+\end{align}
+where
+
+\begin{align}
+	\begin{aligned}
+	&R_{1}=f\left(t_{n}, \hat{\psi}_{\mathbf{k}}^{n}\right) \\
+	&R_{2}=f\left(t_{n}+\frac{1}{2} \Delta t, \hat{\psi}_{\mathbf{k}}^{n}+\frac{1}{2} \Delta t R_{1}\right) \\
+	&R_{3}=f\left(t_{n}+\frac{1}{2} \Delta t, \hat{\psi}_{\mathbf{k}}^{n}+\frac{1}{2} \Delta t R_{2}\right) \\
+	&R_{4}=f\left(t_{n}+\Delta t, \hat{\psi}_{\mathbf{k}}^{n}+\Delta t R_{3}\right)
+	\end{aligned}
+\end{align}
+
+\end{document}
