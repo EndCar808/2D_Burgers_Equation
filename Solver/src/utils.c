@@ -55,7 +55,7 @@ int GetCMLArgs(int argc, char** argv) {
     sys_vars->t0         = 0.0;
     sys_vars->dt         = 1e-4;
     sys_vars->T          = 1.0;
-    sys_vars->CFL_CONST  = sqrt(3);
+    sys_vars->CFL_CONST  = 0.8;
     // Initial conditions
     strncpy(sys_vars->u0, "TG_VORT", 64);
     // Forcing

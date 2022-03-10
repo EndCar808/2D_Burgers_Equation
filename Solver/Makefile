@@ -51,7 +51,7 @@ PHASE_ONLY := -D__VISCOUS -D__HYPER -D__PHASE_ONLY -D__TRANSIENTS #-D__EKMAN_DRA
 DSET_FLAGS := -D__SYS_MEASURES #-D__ENST_FLUX -D__ENRG_FLUX -D__ENST_SPECT -D__ENRG_SPECT -D__ENST_FLUX_SPECT -D__ENRG_FLUX_SPECT -D__VORT_REAL -D__REALSPACE -D__MODES  
  
 # Flags to be passed to the solver for testing
-TEST_FLAGS := -D__INVISCID -D__TESTING -D__DEBUG #-D__ADAPTIVE_STEP -D__CFL_STEP -D__TRANSIENTS
+TEST_FLAGS := -D__INVISCID -D__TESTING -D__HYPER #-D__DEBUG #-D__ADAPTIVE_STEP -D__CFL_STEP -D__TRANSIENTS
 # ---------------------------------------------------------------------
 #  Directory creation
 # ---------------------------------------------------------------------

@@ -95,6 +95,9 @@
 // #define __RHS
 // #define __NONLIN
 // Choose whether to save the Real or Fourier space velocitites
+#define __PSI_FOUR
+// #define __PSI_REAL
+// Choose whether to save the Real or Fourier space velocitites
 #define __MODES
 // #define __REALSPACE
 // Choose whether to compute system measures
@@ -123,12 +126,13 @@
 #define DP_DELTA_MIN 0.01       // The min delta value for the Dormand Prince scheme
 #define DP_DELTA_MAX 1.5 		// The max delta value for the Dormand Prince scheme
 #define DP_DELTA 0.8 			// The scaling parameter of the error for the Dormand Prince Scheme
+#define DP_MAX_TRIES 25	        // The maximum number of tries before the dormand prince scheme gives up
 // Initial Conditions parameters
 #define KAPPA M_PI 				// Wavenumber for the initial condition
 // System checking parameters
 #define MIN_STEP_SIZE 1e-10 	// The minimum allowed stepsize for the solver 
 #define MAX_ITERS 1e+12			// The maximum iterations to perform
-#define MAX_VORT_LIM 1e+100     // The maximum allowed vorticity
+#define MAX_PSI_LIM 1e+100      // The maximum allowed vorticity
 // Dynamic Modes
 #define UPR_SBST_LIM 64         // The upper mode limit of the energy/enstrophy flux
 #define LWR_SBST_LIM 0  		// The lower mode limit of the energy/enstrophy flux
@@ -163,7 +167,7 @@ typedef struct system_vars_struct {
 	double max_dt;						// Largest timestep achieved when adaptive stepping is on
 	double dx;							// Collocation point spaceing in the x direction
 	double dy;							// Collocation point spacing in the y direction
-	double w_max_init;					// Max vorticity of the initial condition
+	double psi_max_init;				// Max vorticity of the initial condition
 	int n_spect;                        // Size of the spectra arrays
 	int force_k; 						// The forcing wavenumber 
 	int print_every;                    // Records how many iterations are performed before printing to file
@@ -204,7 +208,7 @@ typedef struct runtime_data_struct {
 	double* enst_spect;       // Array to hold the enstrophy spectrum of the system
 	double* enst_flux_spect;  // Array to hold the enstrophy flux of the system
 	double* enrg_flux_spect;  // Array to hold the energy flux spectrum
-	double* tg_soln;	  	  // Array for computing the Taylor Green vortex solution
+	double* exact_soln;	  	  // Array for computing the exact solution via the Hopf-Cole transformation
 } runtime_data_struct;
 
 // Runge-Kutta Integration struct
@@ -217,7 +221,7 @@ typedef struct RK_data_struct {
 	fftw_complex* RK6;		  	// Array to hold the result of the sixth stage of RK5 scheme
 	fftw_complex* RK7; 		  	// Array to hold the result of the seventh stage of the Dormand Prince Scheme
 	fftw_complex* RK_tmp;	  	// Array to hold the tempory updates to w_hat - input to RHS function
-	fftw_complex* w_hat_last; 	// Array to hold the values of the Fourier space vorticity from the previous iteration - used in the stepsize control in DP scheme
+	fftw_complex* psi_hat_last; // Array to hold the values of the Fourier space vorticity from the previous iteration - used in the stepsize control in DP scheme
 	fftw_complex* grad_psi_hat;	// Batch array the derivatives of the velocity potential in Fourier space for the nonlinear term
 	double* grad_psi;		  	// Batch array the derivatives of the velocity potential in Real space for the nonlinear term
 	double DP_err; 			  	// Variable to hold the error between the embedded methods in the Dormand Prince scheme

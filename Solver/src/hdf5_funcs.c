@@ -46,7 +46,7 @@ void CreateOutputFilesWriteICs(const long int* N, double dt) {
     int tmp;
     int indx;
 
-    #if (defined(__VORT_FOUR) || defined(__MODES)) && !defined(DEBUG)
+    #if (defined(__VORT_FOUR) || defined(__MODES) || defined(__PSI_FOUR)) && !defined(DEBUG)
     // Create compound datatype for the complex datasets
     file_info->COMPLEX_DTYPE = CreateComplexDatatype();
     #endif
@@ -110,17 +110,56 @@ void CreateOutputFilesWriteICs(const long int* N, double dt) {
 
     #if !defined(TRANSIENTS)
     // Create dimension arrays
-    #if defined(__VORT_FOUR) || defined(__VORT_REAL)
     static const int d_set_rank2D = 2;
     hsize_t dset_dims2D[d_set_rank2D];        // array to hold dims of the dataset to be created
     hsize_t slab_dims2D[d_set_rank2D];        // Array to hold the dimensions of the hyperslab
     hsize_t mem_space_dims2D[d_set_rank2D];   // Array to hold the dimensions of the memoray space - for real data this will be different to slab_dims due to 0 padding
-    #endif
     #if defined(__MODES) || defined(__REALSPACE)
     static const int d_set_rank3D = 3;
     hsize_t dset_dims3D[d_set_rank3D];        // array to hold dims of the dataset to be created
     hsize_t slab_dims3D[d_set_rank3D];        // Array to hold the dimensions of the hyperslab
     hsize_t mem_space_dims3D[d_set_rank3D];   // Array to hold the dimensions of the memoray space - for real data this will be different to slab_dims due to 0 padding
+    #endif
+
+
+    ///--------------------------- Write the Fourier Velocity Poential 
+    #if defined(__PSI_FOUR)
+    // Create dimension arrays
+    dset_dims2D[0]      = Nx;
+    dset_dims2D[1]      = Ny_Fourier;
+    slab_dims2D[0]      = sys_vars->local_Nx;
+    slab_dims2D[1]      = Ny_Fourier;
+    mem_space_dims2D[0] = sys_vars->local_Nx;
+    mem_space_dims2D[1] = Ny_Fourier;
+
+    // Write the real space vorticity
+    WriteDataFourier(0.0, 0, main_group_id, "psi_hat", file_info->COMPLEX_DTYPE, d_set_rank2D, dset_dims2D, slab_dims2D, mem_space_dims2D, sys_vars->local_Nx_start, run_data->psi_hat);
+    #endif
+
+    ///--------------------------- Write the Real Space Velocity Potential
+    #if defined(__PSI_REAL)
+    // Transform velocities back to real space and normalize
+    fftw_mpi_execute_dft_c2r(sys_vars->fftw_2d_dft_c2r, run_data->psi_hat, run_data->psi);
+    for (int i = 0; i < sys_vars->local_Nx; ++i) {
+        tmp = i * (Ny + 2);
+        for (int j = 0; j < Ny; ++j) {
+            indx = tmp + j;
+
+            // Normalize
+            run_data->psi[indx] *= 1.0 / (double) (Nx * Ny);
+        }
+    }
+
+    // Specify dataset dimensions
+    dset_dims2D[0]    = Nx;
+    dset_dims2D[1]    = Ny;
+    slab_dims2D[0]    = sys_vars->local_Nx;
+    slab_dims2D[1]    = Ny;
+    mem_space_dims2D[0] = sys_vars->local_Nx;
+    mem_space_dims2D[1] = (Ny + 2);
+
+    // Write the real space vorticity
+    WriteDataReal(0.0, 0, main_group_id, "psi", H5T_NATIVE_DOUBLE, d_set_rank2D, dset_dims2D, slab_dims2D, mem_space_dims2D, sys_vars->local_Nx_start, run_data->u);
     #endif
 
     ///--------------------------- Get the Fourier Velocities
@@ -137,6 +176,7 @@ void CreateOutputFilesWriteICs(const long int* N, double dt) {
         }
     }
     #endif
+    
     ///----------------------------- Write Fourier Velocities
     #if defined(__MODES)
     // Create dimension arrays
@@ -182,6 +222,22 @@ void CreateOutputFilesWriteICs(const long int* N, double dt) {
 
     // Write the real space vorticity
     WriteDataReal(0.0, 0, main_group_id, "u", H5T_NATIVE_DOUBLE, d_set_rank3D, dset_dims3D, slab_dims3D, mem_space_dims3D, sys_vars->local_Nx_start, run_data->u);
+    #endif
+
+    ///------------------------------ Write Exact Solution
+    #if defined(TESTING)
+    if (!(strcmp(sys_vars->u0, "HOPF_COLE"))) {
+        // Create dimension arrays
+        dset_dims2D[0]      = Nx;
+        dset_dims2D[1]      = Ny;
+        slab_dims2D[0]      = sys_vars->local_Nx;
+        slab_dims2D[1]      = Ny;
+        mem_space_dims2D[0] = sys_vars->local_Nx;
+        mem_space_dims2D[1] = Ny + 2;
+
+        // Write the real space vorticity
+        WriteDataReal(0.0, 0, main_group_id, "ExactSoln", H5T_NATIVE_DOUBLE, d_set_rank2D, dset_dims2D, slab_dims2D, mem_space_dims2D, sys_vars->local_Nx_start, run_data->exact_soln);   
+    }
     #endif
     #endif
 
@@ -387,12 +443,10 @@ void WriteDataToFile(double t, double dt, long int iters) {
     hid_t spectra_group_id;
     #endif
     hid_t plist_id;
-    #if defined(__VORT_FOUR) || defined(__VORT_REAL)
     static const int d_set_rank2D = 2;
     hsize_t dset_dims2D[d_set_rank2D];        // array to hold dims of the dataset to be created
     hsize_t slab_dims2D[d_set_rank2D];        // Array to hold the dimensions of the hyperslab
     hsize_t mem_space_dims2D[d_set_rank2D];   // Array to hold the dimensions of the memoray space - for real data this will be different to slab_dims due to 0 padding
-    #endif
     #if defined(__MODES) || defined(__REALSPACE)
     static const int d_set_rank3D = 3;
     hsize_t dset_dims3D[d_set_rank3D];        // array to hold dims of the dataset to be created
@@ -464,6 +518,47 @@ void WriteDataToFile(double t, double dt, long int iters) {
     // -------------------------------
     // Write Data
     // -------------------------------
+    
+    ///--------------------------- Write the Fourier Velocity Poential 
+    #if defined(__PSI_FOUR)
+    // Create dimension arrays
+    dset_dims2D[0]      = Nx;
+    dset_dims2D[1]      = Ny_Fourier;
+    slab_dims2D[0]      = sys_vars->local_Nx;
+    slab_dims2D[1]      = Ny_Fourier;
+    mem_space_dims2D[0] = sys_vars->local_Nx;
+    mem_space_dims2D[1] = Ny_Fourier;
+
+    // Write the real space vorticity
+    WriteDataFourier(t, (int)iters, main_group_id, "psi_hat", file_info->COMPLEX_DTYPE, d_set_rank2D, dset_dims2D, slab_dims2D, mem_space_dims2D, sys_vars->local_Nx_start, run_data->psi_hat);
+    #endif
+
+    ///--------------------------- Write the Real Space Velocity Potential
+    #if defined(__PSI_REAL)
+    // Transform velocities back to real space and normalize
+    fftw_mpi_execute_dft_c2r(sys_vars->fftw_2d_dft_c2r, run_data->psi_hat, run_data->psi);
+    for (int i = 0; i < sys_vars->local_Nx; ++i) {
+        tmp = i * (Ny + 2);
+        for (int j = 0; j < Ny; ++j) {
+            indx = tmp + j;
+
+            // Normalize
+            run_data->psi[indx] *= 1.0 / (double) (Nx * Ny);
+        }
+    }
+
+    // Specify dataset dimensions
+    dset_dims2D[0]    = Nx;
+    dset_dims2D[1]    = Ny;
+    slab_dims2D[0]    = sys_vars->local_Nx;
+    slab_dims2D[1]    = Ny;
+    mem_space_dims2D[0] = sys_vars->local_Nx;
+    mem_space_dims2D[1] = (Ny + 2);
+
+    // Write the real space vorticity
+    WriteDataReal(t, (int)iters, main_group_id, "psi", H5T_NATIVE_DOUBLE, d_set_rank2D, dset_dims2D, slab_dims2D, mem_space_dims2D, sys_vars->local_Nx_start, run_data->u);
+    #endif
+
     ///--------------------------- Get the Fourier Velocities
     #if defined(__MODES) || defined(__REALSPACE)
     // Need to compute the Fourier velocities from the Fourier velocity potentials
@@ -524,6 +619,22 @@ void WriteDataToFile(double t, double dt, long int iters) {
 
     // Write the real space vorticity
     WriteDataReal(t, (int)iters, main_group_id, "u", H5T_NATIVE_DOUBLE, d_set_rank3D, dset_dims3D, slab_dims3D, mem_space_dims3D, sys_vars->local_Nx_start, run_data->u);
+    #endif
+
+    ///------------------------------ Write Exact Solution
+    #if defined(TESTING)
+    if (!(strcmp(sys_vars->u0, "HOPF_COLE"))) {
+        // Create dimension arrays
+        dset_dims2D[0]      = Nx;
+        dset_dims2D[1]      = Ny;
+        slab_dims2D[0]      = sys_vars->local_Nx;
+        slab_dims2D[1]      = Ny;
+        mem_space_dims2D[0] = sys_vars->local_Nx;
+        mem_space_dims2D[1] = Ny + 2;
+
+        // Write the real space vorticity
+        WriteDataReal(t, (int)iters, main_group_id, "ExactSoln", H5T_NATIVE_DOUBLE, d_set_rank2D, dset_dims2D, slab_dims2D, mem_space_dims2D, sys_vars->local_Nx_start, run_data->exact_soln);   
+    }
     #endif
 
 
@@ -923,7 +1034,7 @@ void FinalWriteAndCloseOutputFile(const long int* N, int iters, int save_data_in
         H5Fclose(file_info->test_file_handle);
     }
     #endif
-    #if defined(__VORT_FOUR) || defined(__MODES)
+    #if defined(__VORT_FOUR) || defined(__MODES) || defined(__PSI_FOUR)
     // Close the complex datatype identifier
     H5Tclose(file_info->COMPLEX_DTYPE);
     #endif
