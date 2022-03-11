@@ -1269,10 +1269,10 @@ void ComputeSystemMeasurables(double t, int iter, RK_data_struct* RK_data) {
     		if (print_indx < sys_vars->num_print_steps) {
 	    		// Update the sums
 	    		if ((j == 0) || (j == Ny_Fourier - 1)) { // only count the 0 and N/2 modes once as they have no conjugate
-	    			run_data->tot_energy[iter] += -k_sqr * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx]));
+	    			run_data->tot_energy[iter] += k_sqr * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx]));
 	    		}
 	    		else {
-	    			run_data->tot_energy[iter] += -2.0 * k_sqr * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx]));
+	    			run_data->tot_energy[iter] += 2.0 * k_sqr * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx]));
 	    		}
 	    		#endif
 	    	}

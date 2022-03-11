@@ -213,4 +213,31 @@ where
 	\end{aligned}
 \end{align}
 
+\section{System Quantities}
+
+
+\subsection{Total Kinetic Energy}
+
+The total kinetic energy contained in the system is defined as 
+
+\begin{align}
+	\mathcal{K}(\bfu) = \frac{1}{2}\int_0^{2 \pi}|\bfu|^2\mathrm{d}\bfx = \frac{1}{2}\int_0^{2\pi} |(u, v)^{T}|^2 \mathrm{d}\bfx = -\frac{1}{2}\int_0^{2\pi} \left( \pder{\psi}{x}\right)^2 + \left( \pder{\psi}{y}\right)^2\mathrm{d}\bfx
+\end{align}
+
+Using (\ref{eq:fourier_decomp}) the total energy in Fourier space becomes
+
+\begin{align}
+\mathcal{K}(\hat{u}_{\bfk})	&= \frac{1}{2}\int_0^{2\pi} \left(\sum_{\mathbf{k}_1\in \mathbb{Z}^2\setminus \mathbf{0}}\ii k_{1x}\psihat{\bfkn{1}}\e^{\ii \mathbf{k}_1\cdot \mathbf{x}}\right)\left(\sum_{\mathbf{k}_2\in \mathbb{Z}^2\setminus \mathbf{0}}\ii k_{2x}\psihat{\bfkn{2}} \e^{\ii \mathbf{k}_2\cdot \mathbf{x}}\right) + \left(\sum_{\mathbf{k}_1\in \mathbb{Z}^2\setminus \mathbf{0}} \ii k_{1y}\psihat{\bfkn{1}}\e^{\ii \mathbf{k}_1\cdot \mathbf{x}}\right)\left(\sum_{\mathbf{k}_2\in \mathbb{Z}^2\setminus \mathbf{0}} \ii k_{2y} \psihat{\bfkn{2}}\e^{\ii \mathbf{k}_2\cdot \mathbf{x}}\right) \mathrm{d}\bfx \notag\\
+	&= \frac{1}{2}\int_0^{2\pi} \sum_{\mathbf{k}_1, \mathbf{k}_2\in \mathbb{Z}^2\setminus \mathbf{0}} -(k_{1x}k_{2x} + k_{1y}k_{2y}) \psihat{\bfkn{1}}\psihat{\bfkn{2}} \e^{\ii (\mathbf{k}_1 + \mathbf{k}_2)\cdot \mathbf{x}} \mathrm{d}\bfx \notag \\
+	&= \frac{1}{2}\sum_{\mathbf{k}_1, \mathbf{k}_2\in \mathbb{Z}^2\setminus \mathbf{0}} -(k_{1x}k_{2x} + k_{1y}k_{2y}) \psihat{\bfkn{1}}\psihat{\bfkn{2}} \int_0^{2\pi} \e^{\ii (\mathbf{k}_1 + \mathbf{k}_2)\cdot \mathbf{x}} \mathrm{d}\bfx \notag \\
+	&= \frac{1}{2}\sum_{\mathbf{k}_1, \mathbf{k}_2\in \mathbb{Z}^2\setminus \mathbf{0}} -(k_{1x}k_{2x} + k_{1y}k_{2y}) \psihat{\bfkn{1}}\psihat{\bfkn{2}} (2\pi)^2 \delta_{\bfkn{1}, \bfkn{2}} \notag \\
+	&= 2\pi^2 \sum_{\mathbf{k}_1\in \mathbb{Z}^2\setminus \mathbf{0}} -(k_{1x}(-k_{1x}) + k_{1y}(-k_{1y})) \psihat{\bfkn{1}}\psihat{-\bfkn{1}} \notag \\
+	&= 2\pi^2 \sum_{\mathbf{k}\in \mathbb{Z}^2\setminus \mathbf{0}} |\bfk|^2 |\psihat{\bfk}|
+	\label{eq:energy_u_fourier}
+\end{align}
+where we have let $\bfkn{2} = - \bfkn{1}$ (and relabled as $\bfk$).
+
+
+
 \end{document}
+
