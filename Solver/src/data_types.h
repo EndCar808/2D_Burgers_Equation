@@ -88,27 +88,21 @@
 // These definitions control which datasets are to be computed and written to file
 // Turning these on in this file means that they WILL be on at compilation time
 
-// Choose whether to save the Real Space or Fourier Space vorticity
-// #define __VORT_REAL
-// #define __VORT_FOUR
-// Choose whether to save the Nonlinear term or RHS of equation of motion
-// #define __RHS
-// #define __NONLIN
 // Choose whether to save the Real or Fourier space velocitites
 #define __PSI_FOUR
 // #define __PSI_REAL
+// Choose whether to save the Nonlinear term or RHS of equation of motion
+// #define __RHS
+// #define __NONLIN
 // Choose whether to save the Real or Fourier space velocitites
 #define __MODES
 // #define __REALSPACE
 // Choose whether to compute system measures
 #define __SYS_MEASURES
 // Choose whether to compute the fluxes
-// #define __ENST_FLUX
 // #define __ENRG_FLUX
 // Choose whether to compute the Energy and Enstrophy spectra and flux spectra
-// #define __ENST_SPECT
 // #define __ENRG_SPECT
-// #define __ENST_FLUX_SPECT
 // #define __ENRG_FLUX_SPECT
 // Choose whether to save the time, collocation points and wavenumbers
 #define __TIME
@@ -128,7 +122,7 @@
 #define DP_DELTA 0.8 			// The scaling parameter of the error for the Dormand Prince Scheme
 #define DP_MAX_TRIES 25	        // The maximum number of tries before the dormand prince scheme gives up
 // Initial Conditions parameters
-#define KAPPA M_PI 				// Wavenumber for the initial condition
+#define KAPPA 1 				// Wavenumber for the initial condition
 // System checking parameters
 #define MIN_STEP_SIZE 1e-10 	// The minimum allowed stepsize for the solver 
 #define MAX_ITERS 1e+12			// The maximum iterations to perform

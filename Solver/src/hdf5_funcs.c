@@ -37,7 +37,7 @@ void CreateOutputFilesWriteICs(const long int* N, double dt) {
     const long int Ny         = N[1];
     const long int Ny_Fourier = N[1] / 2 + 1;
     hid_t main_group_id;
-    #if defined(__ENST_SPECT) || defined(__ENRG_SPECT) || defined(__ENST_FLUX_SPECT) || defined(__ENRG_FLUX_SPECT)
+    #if defined(__ENRG_SPECT) || defined(__ENRG_FLUX_SPECT)
     hid_t spectra_group_id;
     #endif
     char group_name[128];
@@ -46,7 +46,7 @@ void CreateOutputFilesWriteICs(const long int* N, double dt) {
     int tmp;
     int indx;
 
-    #if (defined(__VORT_FOUR) || defined(__MODES) || defined(__PSI_FOUR)) && !defined(DEBUG)
+    #if (defined(__MODES) || defined(__PSI_FOUR)) && !defined(DEBUG)
     // Create compound datatype for the complex datasets
     file_info->COMPLEX_DTYPE = CreateComplexDatatype();
     #endif
@@ -80,7 +80,7 @@ void CreateOutputFilesWriteICs(const long int* N, double dt) {
         exit(1);
     }
 
-    #if defined(__ENST_SPECT) || defined(__ENRG_SPECT) || defined(__ENST_FLUX_SPECT) || defined(__ENRG_FLUX_SPECT)
+    #if defined(__ENRG_SPECT) || defined(__ENRG_FLUX_SPECT)
     if (!sys_vars->rank){
         // Create the spectra output file
         file_info->spectra_file_handle = H5Fcreate(file_info->spectra_file_name, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
@@ -102,7 +102,7 @@ void CreateOutputFilesWriteICs(const long int* N, double dt) {
     
     // Create group for the current iteration data
     main_group_id = CreateGroup(file_info->output_file_handle, file_info->output_file_name, group_name, 0.0, dt, 0);
-    #if defined(__ENST_SPECT) || defined(__ENRG_SPECT) || defined(__ENST_FLUX_SPECT) || defined(__ENRG_FLUX_SPECT)
+    #if defined(__ENRG_SPECT) || defined(__ENRG_FLUX_SPECT)
     if (!sys_vars->rank) {
         spectra_group_id = CreateGroup(file_info->spectra_file_handle, file_info->spectra_file_name, group_name, 0.0, dt, 0);
     }
@@ -239,6 +239,31 @@ void CreateOutputFilesWriteICs(const long int* N, double dt) {
         WriteDataReal(0.0, 0, main_group_id, "ExactSoln", H5T_NATIVE_DOUBLE, d_set_rank2D, dset_dims2D, slab_dims2D, mem_space_dims2D, sys_vars->local_Nx_start, run_data->exact_soln);   
     }
     #endif
+
+    ///------------------------------ Write The Spectra
+    #if defined(__ENRG_SPECT) || defined(__ENRG_FLUX_SPECT)
+    // Gather Spectra data and write to file
+    if (!sys_vars->rank) {
+        // Gather spectra data on master process & write to file
+        #if defined(__ENRG_SPECT)
+        MPI_Reduce(MPI_IN_PLACE, run_data->enrg_spect, sys_vars->n_spect, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        WriteDataSpect(0.0, 0, spectra_group_id, sys_vars->n_spect, "EnergySpectrum", run_data->enrg_spect);
+        #endif
+        #if defined(__ENRG_FLUX_SPECT)
+        MPI_Reduce(MPI_IN_PLACE, run_data->enrg_flux_spect, sys_vars->n_spect, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        WriteDataSpect(0.0, 0, spectra_group_id, sys_vars->n_spect, "EnergyFluxSpectrum", run_data->enrg_flux_spect);
+        #endif
+    }
+    else {
+        // Reduce all other process to master rank
+        #if defined(__ENRG_SPECT)
+        MPI_Reduce(run_data->enrg_spect, NULL,  sys_vars->n_spect, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        #endif
+        #if defined(__ENRG_FLUX_SPECT)
+        MPI_Reduce(run_data->enrg_flux_spect, NULL,  sys_vars->n_spect, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        #endif
+    }
+    #endif
     #endif
 
 
@@ -252,7 +277,7 @@ void CreateOutputFilesWriteICs(const long int* N, double dt) {
         fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to close output file ["CYAN"%s"RESET"] at: Iter = ["CYAN"%d"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", file_info->output_file_name, 0, 0.0);
         exit(1);        
     }
-    #if defined(__ENST_SPECT) || defined(__ENRG_SPECT) || defined(__ENST_FLUX_SPECT) || defined(__ENRG_FLUX_SPECT)
+    #if defined(__ENRG_SPECT) || defined(__ENRG_FLUX_SPECT)
     if (!sys_vars->rank) {
         status = H5Gclose(spectra_group_id);
         status = H5Fclose(file_info->spectra_file_handle);
@@ -341,7 +366,7 @@ void GetOutputDirPath(void) {
             printf("\nMain Output File: "CYAN"%s"RESET"\n\n", file_info->output_file_name);
         }
 
-        #if defined(__ENST_SPECT) || defined(__ENRG_SPECT) || defined(__ENST_FLUX_SPECT) || defined(__ENRG_FLUX_SPECT)
+        #if defined(__ENRG_SPECT) || defined(__ENRG_FLUX_SPECT)
         if ( !(sys_vars->rank) ) {
             // Construct Spectra file path
             strcpy(tmp_path, file_info->output_dir);
@@ -409,7 +434,7 @@ void GetOutputDirPath(void) {
             printf("\nMain Output File: "CYAN"%s"RESET"\n\n", file_info->output_file_name);
         }
 
-        #if defined(__ENST_SPECT) || defined(__ENRG_SPECT) || defined(__ENST_FLUX_SPECT) || defined(__ENRG_FLUX_SPECT)
+        #if defined(__ENRG_SPECT) || defined(__ENRG_FLUX_SPECT)
         if ( !(sys_vars->rank) ) {
             // Construct spectra file path
             strcpy(file_info->spectra_file_name, file_info->output_dir); 
@@ -439,7 +464,7 @@ void WriteDataToFile(double t, double dt, long int iters) {
     const long int Ny_Fourier = sys_vars->N[1] / 2 + 1;
     herr_t status;
     hid_t main_group_id;
-    #if defined(__ENST_SPECT) || defined(__ENRG_SPECT) || defined(__ENST_FLUX_SPECT) || defined(__ENRG_FLUX_SPECT)
+    #if defined(__ENRG_SPECT) || defined(__ENRG_FLUX_SPECT)
     hid_t spectra_group_id;
     #endif
     hid_t plist_id;
@@ -479,7 +504,7 @@ void WriteDataToFile(double t, double dt, long int iters) {
     }
     H5Pclose(plist_id);
 
-    #if defined(__ENST_SPECT) || defined(__ENRG_SPECT) || defined(__ENST_FLUX_SPECT) || defined(__ENRG_FLUX_SPECT)
+    #if defined(__ENRG_SPECT) || defined(__ENRG_FLUX_SPECT)
     if (!sys_vars->rank) {
         // Check if spectra file exists - open it if it does if not create it
         if (access(file_info->output_file_name, F_OK) != 0) {
@@ -509,7 +534,7 @@ void WriteDataToFile(double t, double dt, long int iters) {
     
     // Create group for the current iteration data
     main_group_id = CreateGroup(file_info->output_file_handle, file_info->output_file_name, group_name, t, dt, iters);
-    #if defined(__ENST_SPECT) || defined(__ENRG_SPECT) || defined(__ENST_FLUX_SPECT) || defined(__ENRG_FLUX_SPECT)
+    #if defined(__ENRG_SPECT) || defined(__ENRG_FLUX_SPECT)
     if (!sys_vars->rank) {
         spectra_group_id = CreateGroup(file_info->spectra_file_handle, file_info->spectra_file_name, group_name, t, dt, iters);
     }
@@ -637,6 +662,31 @@ void WriteDataToFile(double t, double dt, long int iters) {
     }
     #endif
 
+    ///------------------------------ Write The Spectra
+    #if defined(__ENRG_SPECT) || defined(__ENRG_FLUX_SPECT)
+    // Gather Spectra data and write to file
+    if (!sys_vars->rank) {
+        // Gather spectra data on master process & write to file
+        #if defined(__ENRG_SPECT)
+        MPI_Reduce(MPI_IN_PLACE, run_data->enrg_spect, sys_vars->n_spect, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        WriteDataSpect(t, (int)iters, spectra_group_id, sys_vars->n_spect, "EnergySpectrum", run_data->enrg_spect);
+        #endif
+        #if defined(__ENRG_FLUX_SPECT)
+        MPI_Reduce(MPI_IN_PLACE, run_data->enrg_flux_spect, sys_vars->n_spect, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        WriteDataSpect(t, (int)iters, spectra_group_id, sys_vars->n_spect, "EnergyFluxSpectrum", run_data->enrg_flux_spect);
+        #endif
+    }
+    else {
+        // Reduce all other process to master rank
+        #if defined(__ENRG_SPECT)
+        MPI_Reduce(run_data->enrg_spect, NULL,  sys_vars->n_spect, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        #endif
+        #if defined(__ENRG_FLUX_SPECT)
+        MPI_Reduce(run_data->enrg_flux_spect, NULL,  sys_vars->n_spect, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        #endif
+    }
+    #endif
+
 
     // -------------------------------
     // Close identifiers and File
@@ -647,7 +697,7 @@ void WriteDataToFile(double t, double dt, long int iters) {
         fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to close output file ["CYAN"%s"RESET"] at: Iter = ["CYAN"%ld"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", file_info->output_file_name, iters, t);
         exit(1);
     }
-    #if defined(__ENST_SPECT) || defined(__ENRG_SPECT) || defined(__ENST_FLUX_SPECT) || defined(__ENRG_FLUX_SPECT)
+    #if defined(__ENRG_SPECT) || defined(__ENRG_FLUX_SPECT)
     if (!sys_vars->rank) {
         status = H5Gclose(spectra_group_id);
         status = H5Fclose(file_info->spectra_file_handle);
@@ -928,6 +978,51 @@ void WriteDataReal(double t, int iters, hid_t group_id, char* dset_name, hid_t d
     H5Sclose(mem_space);
 }
 /**
+ * Function to write the spectra for the current iteration to file
+ * @param t         The current time in the system
+ * @param iters     The current iteration in the system
+ * @param group_id  The current group in the spectra file to write to
+ * @param dims      The size of the dataset that is being written
+ * @param dset_name The name of the dataset that is being written
+ * @param data      The data that is to be written to file
+ */
+void WriteDataSpect(double t, int iters, hid_t group_id, int dims, char* dset_name, double* data) {
+
+    // Initialize Variables
+    hid_t dset_space;
+    hid_t file_space;
+    static const hsize_t Dims1D = 1;
+    hsize_t dims1d[Dims1D];        // array to hold dims of the dataset to be created
+
+    // -------------------------------
+    // Create Dataset In Group
+    // -------------------------------
+    // Create the dataspace for the data set
+    dims1d[0] = dims;
+    dset_space = H5Screate_simple(Dims1D, dims1d, NULL);
+    if (dset_space < 0) {
+        fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to set dataspace for dataset: ["CYAN"%s"RESET"] at: Iter = ["CYAN"%d"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", dset_name, iters, t);
+        exit(1);
+    }
+
+    // Create the file space id for the dataset in the group
+    file_space = H5Dcreate(group_id, dset_name, H5T_NATIVE_DOUBLE, dset_space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+
+    // --------------------------------------
+    // Write Data to File Space
+    // --------------------------------------
+    if ((H5Dwrite(file_space, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, data)) < 0 ) {
+        fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to write data to datset ["CYAN"%s"RESET"] at: Iter = ["CYAN"%d"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", dset_name, iters, t);
+        exit(1);        
+    }
+
+    // -------------------------------
+    // Close identifiers
+    // -------------------------------
+    H5Dclose(file_space);
+    H5Sclose(dset_space);
+}
+/**
  * Wrapper function that writes all the non-slabbed/chunk datasets to file after integeration has finished - to do so the file must be reponed 
  * with the right read/write permissions and normal I/0 access properties -> otherwise writing to file in a non MPI way would not work
  * @param N              Array containing the dimensions of the system
@@ -1004,19 +1099,67 @@ void FinalWriteAndCloseOutputFile(const long int* N, int iters, int save_data_in
     fftw_free(x0);
     #endif
 
-    // // -------------------------------
-    // // Write System Measures
-    // // -------------------------------
-    // // Time
-    // #if defined(__TIME)
-    // // Time array only on rank 0
-    // if (!(sys_vars->rank)) {
-    //     dims1D[0] = sys_vars->num_print_steps;
-    //     if ( (H5LTmake_dataset(file_info->output_file_handle, "Time", D1, dims1D, H5T_NATIVE_DOUBLE, run_data->time)) < 0) {
-    //         printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"]\n", "Time");
-    //     }
-    // }
-    // #endif
+    // -------------------------------
+    // Write System Measures
+    // -------------------------------
+    // Time
+    #if defined(__TIME)
+    // Time array only on rank 0
+    if (!(sys_vars->rank)) {
+        dims1D[0] = sys_vars->num_print_steps;
+        if ( (H5LTmake_dataset(file_info->output_file_handle, "Time", D1, dims1D, H5T_NATIVE_DOUBLE, run_data->time)) < 0) {
+            printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"]\n", "Time");
+        }
+    }
+    #endif
+
+    // System measures -> need to reduce (in place on rank 0) all arrays across the processess
+    if (!(sys_vars->rank)) {
+        // Reduce on to rank 0
+        #if defined(__SYS_MEASURES)
+        MPI_Reduce(MPI_IN_PLACE, run_data->tot_energy, sys_vars->num_print_steps, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(MPI_IN_PLACE, run_data->enrg_diss, sys_vars->num_print_steps, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        #endif
+        #if defined(__ENRG_FLUX)
+        MPI_Reduce(MPI_IN_PLACE, run_data->enrg_flux_sbst, sys_vars->num_print_steps, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(MPI_IN_PLACE, run_data->enrg_flux_sbst, sys_vars->num_print_steps, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        #endif
+
+        // Dataset dims
+        dims1D[0] = sys_vars->num_print_steps;
+
+        #if defined(__SYS_MEASURES)
+        // Energy
+        if ( (H5LTmake_dataset(file_info->output_file_handle, "TotalEnergy", D1, dims1D, H5T_NATIVE_DOUBLE, run_data->tot_energy)) < 0) {
+            printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"]\n", "TotalEnergy");
+        }
+        // Energy dissipation rate
+        if ( (H5LTmake_dataset(file_info->output_file_handle, "EnergyDissipation", D1, dims1D, H5T_NATIVE_DOUBLE, run_data->enrg_diss)) < 0) {
+            printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"]\n", "EnergyDissipation");
+        }
+        #endif
+        #if defined(__ENRG_FLUX)
+        // Energy flux in/out of a subset of modes
+        if ( (H5LTmake_dataset(file_info->output_file_handle, "EnergyFluxSubset", D1, dims1D, H5T_NATIVE_DOUBLE, run_data->enrg_flux_sbst)) < 0) {
+            printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"]\n", "EnergyFluxSubset");
+        }
+        // Energy dissipation of a subset of modes
+        if ( (H5LTmake_dataset(file_info->output_file_handle, "EnergyDissSubset", D1, dims1D, H5T_NATIVE_DOUBLE, run_data->enrg_diss_sbst)) < 0) {
+            printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"]\n", "EnergyDissSubset");
+        }
+        #endif
+    }
+    else {
+        // Reduce all other process to rank 0
+        #if defined(__SYS_MEASURES)
+        MPI_Reduce(run_data->tot_energy, NULL,  sys_vars->num_print_steps, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(run_data->enrg_diss, NULL, sys_vars->num_print_steps, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        #endif
+        #if defined(__ENRG_FLUX)
+        MPI_Reduce(run_data->enrg_flux_sbst, NULL, sys_vars->num_print_steps, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(run_data->enrg_diss_sbst, NULL, sys_vars->num_print_steps, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        #endif
+    }
 
     // -----------------------------------
     // Close Files for the final time
@@ -1034,7 +1177,7 @@ void FinalWriteAndCloseOutputFile(const long int* N, int iters, int save_data_in
         H5Fclose(file_info->test_file_handle);
     }
     #endif
-    #if defined(__VORT_FOUR) || defined(__MODES) || defined(__PSI_FOUR)
+    #if defined(__MODES) || defined(__PSI_FOUR)
     // Close the complex datatype identifier
     H5Tclose(file_info->COMPLEX_DTYPE);
     #endif

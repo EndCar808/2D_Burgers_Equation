@@ -52,6 +52,7 @@ void SpectralSolve(void) {
 	// Initialize variables
 	const long int N[SYS_DIM]      = {sys_vars->N[0], sys_vars->N[1]};
 	const long int NBatch[SYS_DIM] = {sys_vars->N[0], sys_vars->N[1] / 2 + 1};
+	double norm[2];
 
 	// Initialize the Runge-Kutta struct
 	struct RK_data_struct* RK_data;	   // Initialize pointer to a RK_data_struct
@@ -75,7 +76,7 @@ void SpectralSolve(void) {
 	InitializeSpaceVariables(run_data->x, run_data->k, N);
 
 	// Get initial conditions
-	InitialConditions(run_data->psi, run_data->psi_hat, N);
+	InitialConditions(run_data->psi, run_data->psi_hat, N, norm);
 
 	// -------------------------------
 	// Integration Variables
@@ -108,7 +109,7 @@ void SpectralSolve(void) {
 	// Print IC to Screen 
 	// -------------------------------------------------
 	#if defined(__PRINT_SCREEN)
-	PrintUpdateToTerminal(0, t0, dt, T, 0);
+	PrintUpdateToTerminal(0, t0, dt, T, 0, norm);
 	#endif	
 	
 	//////////////////////////////
@@ -164,7 +165,7 @@ void SpectralSolve(void) {
 		// -------------------------------
 		if ((iters > trans_steps) && (iters % sys_vars->SAVE_EVERY == 0)) {
 			#if defined(TESTING)
-			ExactSoln(t);
+			ExactSoln(t, norm);
 			#endif
 
 			// Record System Measurables
@@ -192,8 +193,7 @@ void SpectralSolve(void) {
 				ComputeSystemMeasurables(t, save_data_indx, RK_data);
 			}
 			#endif
-			// PrintUpdateToTerminal(iters, t, dt, T, save_data_indx - 1);
-			printf("Iter: %d\n", iters);
+			PrintUpdateToTerminal(iters, t, dt, T, save_data_indx - 1, norm);
 		}
 		#endif
 
@@ -730,7 +730,7 @@ void InitializeSpaceVariables(double** x, int** k, const long int* N) {
  * @param psi_hat Fourier space velocitpotential
  * @param N       Array containing the dimensions of the system
  */
-void InitialConditions(double* psi, fftw_complex* psi_hat, const long int* N) {
+void InitialConditions(double* psi, fftw_complex* psi_hat, const long int* N, double* norm) {
 
 	// Initialize variables
 	int tmp, indx;
@@ -757,7 +757,7 @@ void InitialConditions(double* psi, fftw_complex* psi_hat, const long int* N) {
 				indx = (tmp + j);
 
 				// Get the initial condition that solves the Diffusion equation
-				theta = cos(KAPPA * run_data->x[0][i]) * sin(KAPPA * run_data->x[1][j]) * exp(-2.0 * sys_vars->NU * 0.0);
+				theta = cos(KAPPA * run_data->x[0][i]) * sin(KAPPA * run_data->x[1][j]) * exp(-2.0 * sys_vars->NU * 0.0) + 2.0;
 
 				// Fill the velocity potential
 				psi[indx] = 2.0 * sys_vars->NU * log(theta);
@@ -863,7 +863,7 @@ void InitialConditions(double* psi, fftw_complex* psi_hat, const long int* N) {
 	// If testing is enabled and Hopf-Cole initial condition selected -> compute exact solution for writing to file @ t = t0
 	#if defined(TESTING)
 	if(!(strcmp(sys_vars->u0, "HOPF_COLE"))) {
-		ExactSoln(0.0);
+		ExactSoln(0.0, norm);
 	}
 	#endif
 }
@@ -920,7 +920,7 @@ void ApplyDealiasing(fftw_complex* array, int array_dim, const long int* N) {
  * Computes the exact solution via the Hopf-Cole transformation
  * @param t The current time in the simulation
  */
-void ExactSoln(double t) {
+void ExactSoln(double t, double* norm) {
 
 	// Initialize variables
 	int tmp;
@@ -928,6 +928,15 @@ void ExactSoln(double t) {
 	double theta;
 	const long int Nx = sys_vars->N[0];
 	const long int Ny = sys_vars->N[1];
+	double norm_fac = 1.0 / (Nx * Ny);
+
+	// Initialize the norms
+	norm[0] = 0.0;
+	norm[1] = 0.0;
+	double l2_norm = 0.0;
+
+	// Transform to Real space
+	fftw_mpi_execute_dft_c2r(sys_vars->fftw_2d_dft_c2r, run_data->psi_hat, run_data->psi);
 
 	// -------------------------------
 	// Compute The Exact Solution
@@ -938,12 +947,19 @@ void ExactSoln(double t) {
 			indx = tmp + j;
 
 			// Get the solution to the Heat Equation 
-			theta = cos(KAPPA * run_data->x[0][i]) * sin(KAPPA * run_data->x[1][j]) * exp(-2.0 * sys_vars->NU * t);
+			theta = cos(KAPPA * run_data->x[0][i]) * sin(KAPPA * run_data->x[1][j]) * exp(-2.0 * sys_vars->NU * t) + 2.0;
 
 			// Get the solution in terms of velocity potential
 			run_data->exact_soln[indx] = 2.0 * sys_vars->NU * log(theta);
+
+			// Update the norms
+			norm[0] = fmax(fabs(run_data->psi[indx] * norm_fac - run_data->exact_soln[indx]), norm[0]);
+			l2_norm += pow(run_data->psi[indx] * norm_fac - run_data->exact_soln[indx], 2.0);
 		}
 	}
+
+	// Normalize the L2 norm
+	norm[1] = sqrt(l2_norm * norm_fac);
 }
 /**
  * Function to update the timestep if adaptive timestepping is enabled
@@ -1142,20 +1158,22 @@ double GetMaxData(char* dtype) {
  * @param dt             The current timestep in the simulation
  * @param T              The final time of the simulation
  * @param save_data_indx The saving index for output data
- * @param RK_data        Struct containing arrays for the Runge-Kutta integration
+ * @param norm           Array to hold the Linf and L2 norm of the error
  */
-void PrintUpdateToTerminal(int iters, double t, double dt, double T, int save_data_indx) {
+void PrintUpdateToTerminal(int iters, double t, double dt, double T, int save_data_indx, double* norm) {
 
 	// Initialize variables
-	double max_psi = GetMaxData("VEL_POT");;
+	double max_psi = GetMaxData("VEL_POT");
 
-	#if defined(TESTING)
-	#else
-	// Print to screen
 	if( !(sys_vars->rank) ) {	
-		printf("Iter: %d/%ld\tt: %1.6lf/%1.3lf\tdt: %g\tMax Psi: %1.4lf\tKE: %1.5lf\t", iters, sys_vars->num_t_steps, t, T, dt, max_vort, run_data->tot_energy[save_data_indx]);
-	}
+	#if defined(TESTING)
+		// Print to screen
+		printf("Iter: %d/%ld\tt: %1.6lf/%1.3lf\tdt: %g\tMax Psi: %1.4lf\tKE: %g\tL2norm: %g\tLinf: %g\n", iters, sys_vars->num_t_steps, t, T, dt, max_psi, run_data->tot_energy[save_data_indx], norm[1], norm[0]);
+	#else
+		// Print to screen
+		printf("Iter: %d/%ld\tt: %1.6lf/%1.3lf\tdt: %g\tMax Psi: %1.4lf\tKE: %g\n", iters, sys_vars->num_t_steps, t, T, dt, max_psi, run_data->tot_energy[save_data_indx]);
 	#endif
+	}
 }
 /**
  * Function that checks the system to see if it is ok to continue integrations. Checks for blow up, timestep and iteration limits etc
@@ -1220,9 +1238,9 @@ void ComputeSystemMeasurables(double t, int iter, RK_data_struct* RK_data) {
     #endif
 
     // If adaptive stepping check if within memory limits
-    if (print_indx >= sys_vars->num_print_steps) {
+    if (iter >= sys_vars->num_print_steps) {
     	// Print warning to screen if we have exceeded the memory limits for the system measurables arrays
-    	printf("\n["MAGENTA"WARNING"RESET"] --- Unable to write system measures at Indx: [%d] t: [%lf] ---- Number of intergration steps is now greater then memory allocated\n", print_indx, t);
+    	printf("\n["MAGENTA"WARNING"RESET"] --- Unable to write system measures at Indx: [%d] t: [%lf] ---- Number of intergration steps is now greater then memory allocated\n", iter, t);
     }
 
 
@@ -1231,7 +1249,7 @@ void ComputeSystemMeasurables(double t, int iter, RK_data_struct* RK_data) {
     // ------------------------------------
     #if defined(__SYS_MEASURES)
     // Initialize totals
-    if (print_indx < sys_vars->num_print_steps) {
+    if (iter < sys_vars->num_print_steps) {
 	    run_data->tot_energy[iter] = 0.0;
 	    run_data->enrg_diss[iter]  = 0.0;
 	    #if defined(__ENRG_FLUX)
@@ -1271,7 +1289,7 @@ void ComputeSystemMeasurables(double t, int iter, RK_data_struct* RK_data) {
 
     		///--------------------------------- System Measures
     		#if defined(__SYS_MEASURES)
-	   		if (print_indx < sys_vars->num_print_steps) {
+	   		if (iter < sys_vars->num_print_steps) {
 	   			// Get the appropriate prefactor
 	   			#if defined(HYPER_VISC) && defined(EKMN_DRAG)  // Both Hyperviscosity and Ekman drag
 	   			pre_fac = sys_vars->NU * pow(k_sqr, sys_vars->VIS_POW) + sys_vars->EKMN_ALPHA * pow(k_sqr, sys_vars->EKMN_POW);
@@ -1287,22 +1305,22 @@ void ComputeSystemMeasurables(double t, int iter, RK_data_struct* RK_data) {
 	    		if ((j == 0) || (j == Ny_Fourier - 1)) { // only count the 0 and N/2 modes once as they have no conjugate
 	    			run_data->enrg_diss[iter]  += k_sqr * k_sqr * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx])); 
 	    			run_data->tot_energy[iter] += k_sqr * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx]));
+		    		#if defined(__ENRG_FLUX)
 	    			if ((k_sqr >= lwr_sbst_lim_sqr) && (k_sqr < upr_sbst_lim_sqr)) { // define the subset to consider for the flux and dissipation
-		    			#if defined(__ENRG_FLUX)
 		    			run_data->enrg_flux_sbst[iter] += creal(run_data->psi_hat[indx] * conj(RK_data->RK1[indx]) + conj(run_data->psi_hat[indx]) * RK_data->RK1[indx]) * k_sqr;
 		    			run_data->enrg_diss_sbst[iter] += pre_fac * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx])) * k_sqr;
-		    			#endif
 		    		}
+		    		#endif
 	    		}
 	    		else {
 	    			run_data->enrg_diss[iter]  += 2.0 * k_sqr * k_sqr * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx])); 
 	    			run_data->tot_energy[iter] += 2.0 * k_sqr * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx]));
+	    			#if defined(__ENRG_FLUX)
 	    			if ((k_sqr >= lwr_sbst_lim_sqr) && (k_sqr < upr_sbst_lim_sqr)) { // define the subset to consider for the flux and dissipation
-	    				#if defined(__ENRG_FLUX)
 	    				run_data->enrg_flux_sbst[iter] += 2.0 * creal(run_data->psi_hat[indx] * conj(RK_data->RK1[indx]) + conj(run_data->psi_hat[indx]) * RK_data->RK1[indx]) * k_sqr;
 	    				run_data->enrg_diss_sbst[iter] += 2.0 * pre_fac * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx])) * k_sqr;
-	    				#endif
 	    			}
+	    			#endif
 	    		}
 	    		#endif
 	    	}
@@ -1333,12 +1351,11 @@ void ComputeSystemMeasurables(double t, int iter, RK_data_struct* RK_data) {
     		#endif
     	}
     }
-
     // ------------------------------------
     // Normalize Measureables 
     // ------------------------------------	
     #if defined(__SYS_MEASURES)
-    if (print_indx < sys_vars->num_print_steps) {
+    if (iter < sys_vars->num_print_steps) {
 	    // Normalize results and take into account computation in Fourier space
 	    run_data->enrg_diss[iter]  *= 2.0 * const_fac * norm_fac;
 	    run_data->tot_energy[iter] *= const_fac * norm_fac;
@@ -1593,19 +1610,7 @@ void AllocateMemory(const long int* NBatch, RK_data_struct* RK_data) {
 		exit(1);
 	}
 
-	//---------------------------- Allocate the Real and Fourier space vorticity
-	#if defined(__VORT_REAL) || defined(__VORT_FOUR)
-	run_data->w = (double* )fftw_malloc(sizeof(double) * 2 * sys_vars->alloc_local);
-	if (run_data->w == NULL) {
-		fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to allocate memory for ["CYAN"%s"RESET"]\n-->> Exiting!!!\n", "Real Space Vorticity" );
-		exit(1);
-	}
-	run_data->w_hat = (fftw_complex* )fftw_malloc(sizeof(fftw_complex) * sys_vars->alloc_local);
-	if (run_data->w_hat == NULL) {
-		fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to allocate memory for ["CYAN"%s"RESET"]\n-->> Exiting!!!\n", "Fourier Space Vorticity");
-		exit(1);
-	}
-	#endif
+	//---------------------------- Allocate the Phase Only Array
 	#if defined(PHASE_ONLY)
 	// Allocate array for the Fourier amplitudes
 	run_data->a_k = (double* )fftw_malloc(sizeof(double) * sys_vars->alloc_local_batch);
@@ -1731,9 +1736,6 @@ void AllocateMemory(const long int* NBatch, RK_data_struct* RK_data) {
 			#if defined(TESTING)
 			run_data->exact_soln[indx_real]             = 0.0;
 			#endif
-			#if defined(__VORT_REAL) || defined(__VORT_FOUR)
-			run_data->w[indx_real]                      = 0.0;
-			#endif
 			if (j < Ny_Fourier) {
 				run_data->psi_hat[indx_four]			= 0.0;
 				#if defined(PHASE_ONLY)
@@ -1741,12 +1743,9 @@ void AllocateMemory(const long int* NBatch, RK_data_struct* RK_data) {
 				run_data->phi_k[indx_four]			    = 0.0;
 				run_data->tmp_a_k[indx_four] 			= 0.0;
 				#endif
-				#if defined(__VORT_FOUR) || defined(__VORT_FOUR)
-				run_data->w_hat[indx_four]               	  = 0.0 + 0.0 * I;
-				#endif
-				run_data->u_hat[SYS_DIM * indx_four + 0] 	  = 0.0 + 0.0 * I;
-				run_data->u_hat[SYS_DIM * indx_four + 1] 	  = 0.0 + 0.0 * I;
-				RK_data->RK_tmp[indx_four]    			 	  = 0.0 + 0.0 * I;
+				run_data->u_hat[SYS_DIM * indx_four + 0] 	   = 0.0 + 0.0 * I;
+				run_data->u_hat[SYS_DIM * indx_four + 1] 	   = 0.0 + 0.0 * I;
+				RK_data->RK_tmp[indx_four]    			 	   = 0.0 + 0.0 * I;
 				RK_data->RK1[indx_four]                        = 0.0 + 0.0 * I;
 				RK_data->RK2[indx_four]                        = 0.0 + 0.0 * I;
 				RK_data->RK3[indx_four]                        = 0.0 + 0.0 * I;
@@ -1830,10 +1829,6 @@ void FreeMemory(RK_data_struct* RK_data) {
 	fftw_free(run_data->psi_hat);
 	fftw_free(run_data->u);
 	fftw_free(run_data->u_hat);
-	#if defined(__VORT_REAL) || defined(__VORT_FOUR)
-	fftw_free(run_data->w);
-	fftw_free(run_data->w_hat);
-	#endif
 	#if defined(PHASE_ONLY)
 	fftw_free(run_data->a_k);
 	fftw_free(run_data->phi_k);
@@ -1885,6 +1880,7 @@ void FreeMemory(RK_data_struct* RK_data) {
 	fftw_free(RK_data->RK_tmp);
 	fftw_free(RK_data->grad_psi);
 	fftw_free(RK_data->grad_psi_hat);
+
 
 	// ------------------------
 	// Destroy FFTW plans 
