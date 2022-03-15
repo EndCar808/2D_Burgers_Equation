@@ -42,16 +42,16 @@ endif
 #  Executable flags
 # ---------------------------------------------------------------------
 # Flags to be passed to the solver for normal runs
-SOLVER_FLAGS := -D__VISCOUS -D__HYPER #-D__EKMAN_DRAG -D__TRANSIENTS -D__ADAPTIVE_STEP -D__CFL_STEP -D_INVISCID
+SOLVER_FLAGS := -D__VISCOUS #-D__HYPER #-D__EKMAN_DRAG -D__TRANSIENTS -D__ADAPTIVE_STEP -D__CFL_STEP -D_INVISCID
 
 # Phase only flags to be passed to solver
-PHASE_ONLY := -D__VISCOUS -D__HYPER -D__PHASE_ONLY -D__TRANSIENTS #-D__EKMAN_DRAG  -D__INVISCID
-
+PHASE_ONLY := -D__VISCOUS -D__PHASE_ONLY -D__TRANSIENTS #-D__HYPER -D__EKMAN_DRAG -D__INVISCID
+	
 # Dataset Flags to be passed to the solver
 DSET_FLAGS := -D__SYS_MEASURES -D__ENRG_FLUX -D__ENRG_SPECT -D__ENRG_FLUX_SPECT -D__REALSPACE #-D__MODES -D__PSI_REAL
  
 # Flags to be passed to the solver for testing
-TEST_FLAGS := -D__INVISCID -D__TESTING -D__HYPER #-D__DEBUG #-D__ADAPTIVE_STEP -D__CFL_STEP -D__TRANSIENTS
+TEST_FLAGS := -D__TESTING -D__VISCOUS #-D__HYPER -D__DEBUG #-D__ADAPTIVE_STEP -D__CFL_STEP -D__TRANSIENTS
 # ---------------------------------------------------------------------
 #  Directory creation
 # ---------------------------------------------------------------------
@@ -110,7 +110,7 @@ $(OBJBIN)/%_phase_only.o: $(SRCDIR)/%.c $(DEPS)
 test: $(BIN)/solver_test
 
 test_run: $(BIN)/solver_test
-	mpirun -n 4 $(BIN)/solver_test -o "../Data/Test/" -n 128 -n 128 -s 0.0 -e 1.0 -h 0.0001 -i "TG_VORT" -v 1.0 -t "TG-TEST"
+	mpirun -n 4 $(BIN)/solver_test -o "../Data/Test/" -n 128 -n 128 -s 0.0 -e 1.0 -h 0.0001 -i "HOPF_COLE" -v 0.0001 -t "HOPF-COLE-TEST" -p 100
 
 # Taylor Green IC
 $(BIN)/solver_test: $(SRCOBJ_TST) $(DEPS)

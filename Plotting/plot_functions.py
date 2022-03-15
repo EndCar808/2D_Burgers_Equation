@@ -20,6 +20,7 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.pyplot import cm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from subprocess import Popen, PIPE
+import multiprocessing as mprocs
 from itertools import zip_longest
 from numba import njit
 
@@ -60,7 +61,7 @@ def run_plotting_snaps_parallel(args_list, num_procs = 20):
     group_args = args_list * proc_lim
 
     ## Loop of grouped iterable
-    for procs in zip_longest(*groups_args): 
+    for procs in zip_longest(*group_args): 
         pipes     = []
         processes = []
         for p in filter(None, procs):
@@ -103,10 +104,58 @@ def make_video(fileanme, snapname, fps = 30):
 
     ## Prin summary of timmings to screen
     print("\n" + tc.Y + "Finished making video..." + tc.Rst)
-    print("Video Location: " + tc.C + videoName + tc.Rst + "\n")
+    print("Video Location: " + tc.C + videoname + tc.Rst + "\n")
 
 
 #######################################
 ##       SUMMARY SNAP FUNCTIONS      ##
 #######################################
-def plot_summary_snaps(psi, enrg_spec):
+def plot_summary_snaps(out_dir, i, psi, time, x, y, enrg_spec, Nx):
+
+    """
+    Plots summary snaps for each iteration of the simulation. Plot: velocity potential, energy spectra, dissipation, flux and totals.
+    """
+    
+    ## Print Update
+    print("SNAP: {}".format(i))
+
+    ## Create Figure
+    fig = plt.figure(figsize = (16, 8))
+    gs  = GridSpec(2, 2, hspace = 0.6, wspace = 0.3)
+
+    ##-------------------------
+    ## Plot Velocity Potential   
+    ##-------------------------
+    ax1 = fig.add_subplot(gs[0, 0])
+    im1 = ax1.imshow(psi / np.sqrt(np.mean(psi**2)), extent = (y[0], y[-1], x[-1], x[0]), cmap = "RdBu") # , vmin = w_min, vmax = w_max 
+    ax1.set_xlabel(r"$y$")
+    ax1.set_ylabel(r"$x$")
+    ax1.set_xlim(0.0, y[-1])
+    ax1.set_ylim(0.0, x[-1])
+    ax1.set_xticks([0.0, np.pi/2.0, np.pi, 1.5*np.pi, y[-1]])
+    ax1.set_xticklabels([r"$0$", r"$\frac{\pi}{2}$", r"$\pi$", r"$\frac{3\pi}{2}$", r"$2 \pi$"])
+    ax1.set_yticks([0.0, np.pi/2.0, np.pi, 1.5*np.pi, x[-1]])
+    ax1.set_yticklabels([r"$0$", r"$\frac{\pi}{2}$", r"$\pi$", r"$\frac{3\pi}{2}$", r"$2 \pi$"])
+    ax1.set_title(r"$t = {:0.5f}$".format(time[i]))
+    ## Plot colourbar
+    div1  = make_axes_locatable(ax1)
+    cbax1 = div1.append_axes("right", size = "10%", pad = 0.05)
+    cb1   = plt.colorbar(im1, cax = cbax1)
+    cb1.set_label(r"$\psi(x, y)$")
+
+
+    #-------------------------
+    # Plot Energy Spectrum   
+    #-------------------------
+    kindx = int(Nx / 3 + 1)
+    ax2 = fig.add_subplot(gs[0, 1])
+    ax2.plot(enrg_spec[:kindx])
+    ax2.set_xlabel(r"$|\mathbf{k}|$")
+    ax2.set_ylabel(r"$\mathcal{K}(| \mathbf{k} |)$")
+    ax2.set_title(r"Energy Spectrum")
+    ax2.set_yscale('log')
+    ax2.set_xscale('log')
+
+    ## Save figure
+    plt.savefig(out_dir + "SNAP_{:05d}.png".format(i), bbox_inches='tight') 
+    plt.close()

@@ -159,7 +159,7 @@ void CreateOutputFilesWriteICs(const long int* N, double dt) {
     mem_space_dims2D[1] = (Ny + 2);
 
     // Write the real space vorticity
-    WriteDataReal(0.0, 0, main_group_id, "psi", H5T_NATIVE_DOUBLE, d_set_rank2D, dset_dims2D, slab_dims2D, mem_space_dims2D, sys_vars->local_Nx_start, run_data->u);
+    WriteDataReal(0.0, 0, main_group_id, "psi", H5T_NATIVE_DOUBLE, d_set_rank2D, dset_dims2D, slab_dims2D, mem_space_dims2D, sys_vars->local_Nx_start, run_data->psi);
     #endif
 
     ///--------------------------- Get the Fourier Velocities
@@ -327,9 +327,9 @@ void GetOutputDirPath(void) {
         // Get Simulation Details
         // ----------------------------------
         #if defined(__VISCOUS)
-        sprintf(sys_type, "%s", "VIS");
+        sprintf(sys_type, "%s", "VISC");
         #elif defined(__INVISCID)
-        sprintf(sys_type, "%s", "INVIS");
+        sprintf(sys_type, "%s", "INVISC");
         #else
         sprintf(sys_type, "%s", "UKN");
         #endif
@@ -382,9 +382,9 @@ void GetOutputDirPath(void) {
         // Get Simulation Details
         // ----------------------------------
         #if defined(__VISCOUS)
-        sprintf(sys_type, "%s", "VIS");
+        sprintf(sys_type, "%s", "VISC");
         #elif defined(__INVISCID)
-        sprintf(sys_type, "%s", "INVIS");
+        sprintf(sys_type, "%s", "INVISC");
         #else
         sprintf(sys_type, "%s", "SYS_UNKN");
         #endif

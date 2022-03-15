@@ -23,8 +23,8 @@ from subprocess import Popen, PIPE
 from numba import njit
 import pyfftw as fftw
 
-from functions import tc, sim_data, import_data, import_spectra_data, ZeroCentredField, import_post_processing_data
-from plot_functions import run_plotting_snaps_parallel, make_video, plot_phase_snaps, plot_summary_snaps
+from functions import tc, sim_data, import_data, import_spectra_data
+from plot_functions import run_plotting_snaps_parallel, make_video, plot_summary_snaps
 
 
 ###############################
@@ -159,11 +159,12 @@ if __name__ == '__main__':
     ## Read in solver data
     run_data = import_data(cmdargs.in_dir, sys_vars, method)
 
+
     ## Read in spectra data
-    if cmdargs.spec_file == None and os.path.isdir(cmdargs.in_dir + "Spectra_HDF_Data.h5:") == True:
+    if cmdargs.spec_file == None and os.path.isfile(cmdargs.in_dir + "Spectra_HDF_Data.h5") == True:
         ## Read spectra file in normal mode
         spec_data = import_spectra_data(cmdargs.in_dir, sys_vars, method)
-    elif os.path.isdir(cmdargs.in_dir + "Spectra_HDF_Data.h5:") != True:
+    elif cmdargs.spec_file == None and os.path.isfile(cmdargs.in_dir + "Spectra_HDF_Data.h5") != True:
         pass
     else:
         ## Read in spectra file in file only mode
@@ -185,7 +186,15 @@ if __name__ == '__main__':
             if cmdargs.parallel:
 
                 ## Generate list of commands to run
-                arg_list
+                arg_list = [(mprocs.Process(
+                    target = plot_summary_snaps, 
+                    args = (cmdargs.out_dir, i, 
+                            run_data.psi[i, :, :], 
+                            run_data.time, 
+                            run_data.x, 
+                            run_data.y, 
+                            spec_data.enrg_spec[i, :], 
+                            sys_vars.Nx)) for i in range(run_data.psi.shape[0]))]
 
                 ## Run commmands in parallel
                 run_plotting_snaps_parallel(arg_list, num_procs = 20)
@@ -193,8 +202,7 @@ if __name__ == '__main__':
             else:
                 ## Loop over snapshots
                 for i in range(sys_vars.ndata):
-                    plot_summary_snaps()
-
+                    plot_summary_snaps(cmdargs.out_dir, i, run_data.psi[i, :, :], run_data.time, run_data.x, run_data.y, spec_data.enrg_spec[i, :], sys_vars.Nx)
 
 
         ## End timer

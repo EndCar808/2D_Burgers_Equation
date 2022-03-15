@@ -90,7 +90,7 @@
 
 // Choose whether to save the Real or Fourier space velocitites
 #define __PSI_FOUR
-// #define __PSI_REAL
+#define __PSI_REAL
 // Choose whether to save the Nonlinear term or RHS of equation of motion
 // #define __RHS
 // #define __NONLIN
@@ -189,18 +189,12 @@ typedef struct runtime_data_struct {
 	double* tmp_a_k;		  // Array to hold the amplitudes of the fourier vorticity before marching forward in time
 	double* phi_k;			  // Fourier vorticity phases
 	double* tot_energy;       // Array to hold the total energy over the simulation
-	double* tot_enstr;		  // Array to hold the total entrophy over the simulation
-	double* tot_palin;		  // Array to hold the total palinstrophy over the simulaiotns
+	double* tot_div;		  // Array to hold the total divergence over the simulation
 	double* enrg_diss; 		  // Array to hold the energy dissipation rate 
-	double* enst_diss;		  // Array to hold the enstrophy dissipation rate
 	double* time;			  // Array to hold the simulation times
-	double* enst_flux_sbst;   // Array to hold the enstrophy flux in/out of a subset of modes
-	double* enst_diss_sbst;   // Array to hold the enstrophy dissipation for a subset of modes
 	double* enrg_flux_sbst;   // Array to hold the energy flux in/out of a subset of modes
 	double* enrg_diss_sbst;   // Array to hold the energy dissipation for a subset of modes
 	double* enrg_spect;		  // Array to hold the energy spectrum of the system 
-	double* enst_spect;       // Array to hold the enstrophy spectrum of the system
-	double* enst_flux_spect;  // Array to hold the enstrophy flux of the system
 	double* enrg_flux_spect;  // Array to hold the energy flux spectrum
 	double* exact_soln;	  	  // Array for computing the exact solution via the Hopf-Cole transformation
 } runtime_data_struct;

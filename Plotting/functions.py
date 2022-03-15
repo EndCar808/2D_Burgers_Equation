@@ -214,8 +214,8 @@ def sim_data(input_dir, method = "default"):
                 data.u0 = data.u0 + '_' + str(term.split(']')[0])
 
         ## Get the number of data saves
-        with h5py.File(input_dir, 'r') as file:
-            data.ndata = len([g for g in file.keys() if 'Iter' in g])
+        with h5py.File(input_dir, 'r') as input_file:
+            data.ndata = len([g for g in input_file.keys() if 'Iter' in g])
 
         ## Get spectrum size
         data.spec_size = int(np.sqrt((data.Nx / 2)**2 + (data.Ny / 2)**2) + 1)
@@ -238,7 +238,6 @@ def import_data(input_file, sim_data, method = "default"):
     sim_data  : class
                 - object containing the simulation parameters
     """
-
 
     ## Define a data class for the solver data
     class SolverData:
@@ -278,48 +277,47 @@ def import_data(input_file, sim_data, method = "default"):
         in_file = input_file
 
     ## Open file and read in the data
-    with h5py.File(in_file, 'r') as file:
+    with h5py.File(in_file, 'r') as input_file:
 
         ## Initialize counter
         nn = 0
 
         # Read in the vorticity
-        for group in file.keys():
+        for group in input_file.keys():
             if "Iter" in group:
-                if 'psi' in list(file[group].keys()):
-                    data.psi[nn, :, :] = file[group]["psi"][:, :]
-                if 'psi_hat' in list(file[group].keys()):
-                    data.psi_hat[nn, :, :] = file[group]["psi_hat"][:, :]
-                if 'u' in list(file[group].keys()):
-                    data.u[nn, :, :] = file[group]["u"][:, :, :]
-                if 'u_hat' in list(file[group].keys()):
-                    data.u_hat[nn, :, :] = file[group]["u_hat"][:, :, :]
-                if 'ExactSoln' in list(file[group].keys()):
-                    data.exact_soln[nn, :, :] = file[group]["ExactSoln"][:, :]
-                data.time[nn] = file[group].attrs["TimeValue"]
+                if 'psi' in list(input_file[group].keys()):
+                    data.psi[nn, :, :] = input_file[group]["psi"][:, :]
+                if 'psi_hat' in list(input_file[group].keys()):
+                    data.psi_hat[nn, :, :] = input_file[group]["psi_hat"][:, :]
+                if 'u' in list(input_file[group].keys()):
+                    data.u[nn, :, :] = input_file[group]["u"][:, :, :]
+                if 'u_hat' in list(input_file[group].keys()):
+                    data.u_hat[nn, :, :] = input_file[group]["u_hat"][:, :, :]
+                if 'ExactSoln' in list(input_file[group].keys()):
+                    data.exact_soln[nn, :, :] = input_file[group]["ExactSoln"][:, :]
+                data.time[nn] = input_file[group].attrs["TimeValue"]
                 nn += 1
             else:
                 continue
-
         ## Read in the space arrays
-        if 'kx' in list(file.keys()):
-            data.kx = file["kx"][:]
-        if 'ky' in list(file.keys()):
-            data.ky = file["ky"][:]
-        if 'x' in list(file.keys()):
-            data.x  = file["x"][:]
-        if 'y' in list(file.keys()):
-            data.y  = file["y"][:]
+        if 'kx' in list(input_file.keys()):
+            data.kx = input_file["kx"][:]
+        if 'ky' in list(input_file.keys()):
+            data.ky = input_file["ky"][:]
+        if 'x' in list(input_file.keys()):
+            data.x  = input_file["x"][:]
+        if 'y' in list(input_file.keys()):
+            data.y  = input_file["y"][:]
 
         ## Read system measures
-        if 'TotalEnergy' in list(file.keys()):
-            data.tot_enrg = file['TotalEnergy'][:]
-        if 'EnergyDissipation' in list(file.keys()):
-            data.enrg_diss = file['EnergyDissipation'][:]
-        if 'EnergyDissSubset' in list(file.keys()):
-            data.enrg_diss_sbst = file['EnergyDissSubset'][:]
-        if 'EnergyFluxSubset' in list(file.keys()):
-            data.enrg_flux_sbst = file['EnergyFluxSubset'][:]
+        if 'TotalEnergy' in list(input_file.keys()):
+            data.tot_enrg = input_file['TotalEnergy'][:]
+        if 'EnergyDissipation' in list(input_file.keys()):
+            data.enrg_diss = input_file['EnergyDissipation'][:]
+        if 'EnergyDissSubset' in list(input_file.keys()):
+            data.enrg_diss_sbst = input_file['EnergyDissSubset'][:]
+        if 'EnergyFluxSubset' in list(input_file.keys()):
+            data.enrg_flux_sbst = input_file['EnergyFluxSubset'][:]
 
     ## Get inv wavenumbers
     data.k2 = data.ky**2 + data.kx[:, np.newaxis]**2
@@ -329,3 +327,59 @@ def import_data(input_file, sim_data, method = "default"):
     return data
 
 
+def import_spectra_data(input_file, sim_data, method = "default"):
+
+    """
+    Reads in run data from main HDF5 file.
+
+    input_dir : string
+                - If method == "defualt" is True then this will be the path to
+               the input folder. if not then this will be the input folder
+    method    : string
+                - Determines whether the data is to be read in from a file or
+                from an input folder
+    sim_data  : class
+                - object containing the simulation parameters
+    """
+
+    ## Define a data class for the solver data
+    class SpectraData:
+
+        """
+        Class for the run data.
+        """
+
+        def __init__(self):
+            ## Allocate spectra aarrays
+            self.enrg_spec = np.zeros((sim_data.ndata, sim_data.spec_size))
+            ## Allocate flux spectra arrays
+            self.enrg_flux_spec = np.zeros((sim_data.ndata, sim_data.spec_size))
+
+
+    ## Create instance of data class
+    data = SpectraData()
+
+    ## Depending on the output mmode of the solver the input files will be named differently
+    if method == "default":
+        in_file = input_file + "Spectra_HDF_Data.h5"
+    else:
+        in_file = input_file
+
+    ## Open file and read in the data
+    with h5py.File(in_file, 'r') as input_file:
+
+        ## Initialze counter
+        nn = 0
+
+        # Read in the spectra
+        for group in input_file.keys():
+            if "Iter" in group:
+                if 'EnergySpectrum' in list(input_file[group].keys()):
+                    data.enrg_spec[nn, :] = input_file[group]["EnergySpectrum"][:]
+                if 'EnergyFluxSpectrum' in list(input_file[group].keys()):
+                    data.enrg_flux_spec[nn, :] = input_file[group]["EnergyFluxSpectrum"][:]
+                nn += 1
+            else:
+                continue
+
+    return data

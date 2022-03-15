@@ -609,7 +609,7 @@ void NonlinearRHS(fftw_complex* psi_hat, fftw_complex* nonlin_term, fftw_complex
 	const long int Ny_Fourier = sys_vars->N[1] / 2 + 1;
 	fftw_complex k_sqr;
 	double grad_psi_x, grad_psi_y;
-	double norm_fac = 1.0 / (Nx * Ny);
+	double norm_fac = 1.0 / (double )(Nx * Ny);
 
 	// -----------------------------------
 	// Compute Fourier Space Derivatives
@@ -928,7 +928,7 @@ void ExactSoln(double t, double* norm) {
 	double theta;
 	const long int Nx = sys_vars->N[0];
 	const long int Ny = sys_vars->N[1];
-	double norm_fac = 1.0 / (Nx * Ny);
+	double norm_fac = 1.0 / (double )(Nx * Ny);
 
 	// Initialize the norms
 	norm[0] = 0.0;
@@ -1141,7 +1141,7 @@ double GetMaxData(char* dtype) {
 			// Find the max of the Real Space Velocity Potential
 			else if (strcmp(dtype, "VEL_POT") == 0) {
 				// Check if maximum
-				max = fmax(fabs(run_data->psi_hat[indx]), max);
+				max = fmax(fabs(run_data->psi[indx]), max);
 			}
 		}			
 	}
@@ -1168,10 +1168,10 @@ void PrintUpdateToTerminal(int iters, double t, double dt, double T, int save_da
 	if( !(sys_vars->rank) ) {	
 	#if defined(TESTING)
 		// Print to screen
-		printf("Iter: %d/%ld\tt: %1.6lf/%1.3lf\tdt: %g\tMax Psi: %1.4lf\tKE: %g\tL2norm: %g\tLinf: %g\n", iters, sys_vars->num_t_steps, t, T, dt, max_psi, run_data->tot_energy[save_data_indx], norm[1], norm[0]);
+		printf("Iter: %d/%ld\tt: %1.6lf/%1.3lf\tdt: %g\tMax Psi: %g\tKE: %g\tL2norm: %g\tLinf: %g\n", iters, sys_vars->num_t_steps, t, T, dt, max_psi, run_data->tot_energy[save_data_indx], norm[1], norm[0]);
 	#else
 		// Print to screen
-		printf("Iter: %d/%ld\tt: %1.6lf/%1.3lf\tdt: %g\tMax Psi: %1.4lf\tKE: %g\n", iters, sys_vars->num_t_steps, t, T, dt, max_psi, run_data->tot_energy[save_data_indx]);
+		printf("Iter: %d/%ld\tt: %1.6lf/%1.3lf\tdt: %g\tMax Psi: %g\tKE: %g\n", iters, sys_vars->num_t_steps, t, T, dt, max_psi, run_data->tot_energy[save_data_indx]);
 	#endif
 	}
 }
@@ -1250,22 +1250,23 @@ void ComputeSystemMeasurables(double t, int iter, RK_data_struct* RK_data) {
     #if defined(__SYS_MEASURES)
     // Initialize totals
     if (iter < sys_vars->num_print_steps) {
-	    run_data->tot_energy[iter] = 0.0;
-	    run_data->enrg_diss[iter]  = 0.0;
+		run_data->tot_div[iter]    = 0.0;
+		run_data->tot_energy[iter] = 0.0;
+		run_data->enrg_diss[iter]  = 0.0;
 	    #if defined(__ENRG_FLUX)
 		run_data->enrg_flux_sbst[iter] = 0.0;
 		run_data->enrg_diss_sbst[iter] = 0.0;
 		#endif
 	}
     #endif 
-    #if defined(__ENRG_SPECT) || defined(__ENST_SPECT)
+    #if defined(__ENRG_SPECT) || defined(__ENRG_FLUX_SPECT)
     // Initialize spectra
     for (int i = 0; i < sys_vars->n_spect; ++i) {
     	#if defined(__ENRG_SPECT)
     	run_data->enrg_spect[i] = 0.0;
     	#endif
     	#if defined(__ENRG_FLUX_SPECT)
-    	run_data->enrg_flux_spect[spec_indx] = 0.0;
+    	run_data->enrg_flux_spect[i] = 0.0;
     	#endif
     }
     #endif
@@ -1322,35 +1323,39 @@ void ComputeSystemMeasurables(double t, int iter, RK_data_struct* RK_data) {
 	    			}
 	    			#endif
 	    		}
-	    		#endif
 	    	}
+	    	#endif
 
     		///--------------------------------- Spectra
-    		#if defined(__ENRG_SPEC) || defined(__ENRG_FLUX_SPECT)
+    		#if defined(__ENRG_SPECT) || defined(__ENRG_FLUX_SPECT)
     		// Get spectrum index -> spectrum is computed by summing over the energy contained in concentric annuli in wavenumber space
     		spec_indx = (int) round( sqrt( (double)(run_data->k[0][i] * run_data->k[0][i] + run_data->k[1][j] * run_data->k[1][j]) ) );
 
     		if ((j == 0) || (j == Ny_Fourier - 1)) {
     			// Update the current bin
-    			#if defined(__ENRG_SPEC)
-    			run_data->enrg_spect[spec_indx] += const_fac * norm_fac * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx])) * k_sqr;
+    			#if defined(__ENRG_SPECT)
+    			run_data->enrg_spect[spec_indx] += cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx])) * k_sqr;
     			#endif
     			#if defined(__ENRG_FLUX_SPECT)
-    			run_data->enrg_flux_spect[spec_indx] += const_fac * norm_fac * creal(run_data->psi_hat[indx] * conj(RK_data->RK1[indx]) + conj(run_data->psi_hat[indx]) * RK_data->RK1[indx]) * k_sqr;
+    			run_data->enrg_flux_spect[spec_indx] += creal(run_data->psi_hat[indx] * conj(RK_data->RK1[indx]) + conj(run_data->psi_hat[indx]) * RK_data->RK1[indx]) * k_sqr;
     			#endif
     		}
     		else {
     			// Update the spectra sums for the current mode
-    			#if defined(__ENRG_SPEC)
-    			run_data->enrg_spect[spec_indx] += 2.0 * const_fac * norm_fac * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx])) * k_sqr;
+    			#if defined(__ENRG_SPECT)
+    			// if (!sys_vars->rank) printf("k: %1.1lf\ta_k: %1.16lf\tn: %1.16lf\tc: %1.16lf\t||\tk_sqr*a_k: %1.16lf\tpsi_hat[%d]: %1.16lf %1.16lf I\n", k_sqr, cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx])) * k_sqr * const_fac, norm_fac, const_fac, cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx])) * k_sqr, indx, creal(run_data->psi_hat[indx]), cimag(run_data->psi_hat[indx]));
+    			run_data->enrg_spect[spec_indx] += 2.0 * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx])) * k_sqr;
     			#endif
     			#if defined(__ENRG_FLUX_SPECT)
-    			run_data->enrg_flux_spect[spec_indx] += 2.0 * const_fac * norm_fac * creal(run_data->psi_hat[indx] * conj(RK_data->RK1[indx]) + conj(run_data->psi_hat[indx]) * RK_data->RK1[indx]) * k_sqr;
+    			run_data->enrg_flux_spect[spec_indx] += 2.0 * creal(run_data->psi_hat[indx] * conj(RK_data->RK1[indx]) + conj(run_data->psi_hat[indx]) * RK_data->RK1[indx]) * k_sqr;
     			#endif
     		}
     		#endif
     	}
     }
+
+    // if (!sys_vars->rank) for (int i = 0; i < sys_vars->n_spect; ++i) printf("enrg_spec[%d]: %1.16lf\n", i, 10 * run_data->enrg_spect[i]);
+
     // ------------------------------------
     // Normalize Measureables 
     // ------------------------------------	
@@ -1402,16 +1407,9 @@ void InitializeSystemMeasurables(RK_data_struct* RK_data) {
 	}	
 
 	// Total Enstrophy
-	run_data->tot_enstr = (double* )fftw_malloc(sizeof(double) * print_steps);
-	if (run_data->tot_enstr == NULL) {
-		fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to allocate memory for the ["CYAN"%s"RESET"]\n-->> Exiting!!!\n", "Total Enstrophy");
-		exit(1);
-	}	
-
-	// Total Palinstrophy
-	run_data->tot_palin = (double* )fftw_malloc(sizeof(double) * print_steps);
-	if (run_data->tot_palin == NULL) {
-		fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to allocate memory for the ["CYAN"%s"RESET"]\n-->> Exiting!!!\n", "Total Palinstrophy");
+	run_data->tot_div = (double* )fftw_malloc(sizeof(double) * print_steps);
+	if (run_data->tot_div == NULL) {
+		fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to allocate memory for the ["CYAN"%s"RESET"]\n-->> Exiting!!!\n", "Total Divergence");
 		exit(1);
 	}	
 
@@ -1421,17 +1419,10 @@ void InitializeSystemMeasurables(RK_data_struct* RK_data) {
 		fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to allocate memory for the ["CYAN"%s"RESET"]\n-->> Exiting!!!\n", "Energy Dissipation Rate");
 		exit(1);
 	}	
-
-	// Enstrophy Dissipation Rate
-	run_data->enst_diss = (double* )fftw_malloc(sizeof(double) * print_steps);
-	if (run_data->enst_diss == NULL) {
-		fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to allocate memory for the ["CYAN"%s"RESET"]\n-->> Exiting!!!\n", "Enstrophy Dissipation Rate");
-		exit(1);
-	}	
 	#endif
 
 	//---------------------------- Allocate memory for the Energy Spectrum
-	#if defined(__ENRG_SPECT )
+	#if defined(__ENRG_SPECT)
 	// Energy Spectrum
 	run_data->enrg_spect = (double* )fftw_malloc(sizeof(double) * n_spect);
 	if (run_data->enrg_spect == NULL) {
@@ -1458,7 +1449,7 @@ void InitializeSystemMeasurables(RK_data_struct* RK_data) {
 	#endif
 
 	//---------------------------- Allocate memory for the Energy Flux Spectra
-	#if defined(__ENRG_FLUX_SPECT )
+	#if defined(__ENRG_FLUX_SPECT)
 	// Energy Spectrum
 	run_data->enrg_flux_spect = (double* )fftw_malloc(sizeof(double) * n_spect);
 	if (run_data->enrg_flux_spect == NULL) {
@@ -1839,10 +1830,8 @@ void FreeMemory(RK_data_struct* RK_data) {
 	#endif
 	#if defined(__SYS_MEASURES)
 	fftw_free(run_data->tot_energy);
-	fftw_free(run_data->tot_enstr);
-	fftw_free(run_data->tot_palin);
+	fftw_free(run_data->tot_div);
 	fftw_free(run_data->enrg_diss);
-	fftw_free(run_data->enst_diss);
 	#endif
 	#if defined(__ENRG_FLUX)
 	fftw_free(run_data->enrg_flux_sbst);
