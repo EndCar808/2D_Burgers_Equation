@@ -1168,10 +1168,10 @@ void PrintUpdateToTerminal(int iters, double t, double dt, double T, int save_da
 	if( !(sys_vars->rank) ) {	
 	#if defined(TESTING)
 		// Print to screen
-		printf("Iter: %d/%ld\tt: %1.6lf/%1.3lf\tdt: %g\tMax Psi: %g\tKE: %g\tL2norm: %g\tLinf: %g\n", iters, sys_vars->num_t_steps, t, T, dt, max_psi, run_data->tot_energy[save_data_indx], norm[1], norm[0]);
+		printf("Iter: %d/%ld\tt: %1.6lf/%1.3lf\tdt: %g\tMax Psi: %g\tKE: %g\tDivSqr: %g\tuv: %g\tuSqr - vSqr: %g\tL2norm: %g\tLinf: %g\n", iters, sys_vars->num_t_steps, t, T, dt, max_psi, run_data->tot_energy[save_data_indx], run_data->tot_div_sqr[save_data_indx], run_data->tot_uv[save_data_indx], run_data->tot_u_sqr_v_sqr[save_data_indx], norm[1], norm[0]);
 	#else
 		// Print to screen
-		printf("Iter: %d/%ld\tt: %1.6lf/%1.3lf\tdt: %g\tMax Psi: %g\tKE: %g\n", iters, sys_vars->num_t_steps, t, T, dt, max_psi, run_data->tot_energy[save_data_indx]);
+		printf("Iter: %d/%ld\tt: %1.6lf/%1.3lf\tdt: %g\tMax Psi: %g\tKE: %gDivSqr: %g\tuv: %g\tuSqr - vSqr: %g\t\n", iters, sys_vars->num_t_steps, t, T, dt, max_psi, run_data->tot_energy[save_data_indx], run_data->tot_div_sqr[save_data_indx], run_data->tot_uv[save_data_indx], run_data->tot_u_sqr_v_sqr[save_data_indx]);
 	#endif
 	}
 }
@@ -1222,7 +1222,7 @@ void ComputeSystemMeasurables(double t, int iter, RK_data_struct* RK_data) {
 	const long int Nx         = sys_vars->N[0];
 	const long int Ny         = sys_vars->N[1];
 	const long int Ny_Fourier = sys_vars->N[1] / 2 + 1;
-	double k_sqr, pre_fac;
+	double k_sqr, k_sqr_diff, pre_fac;
 	double norm_fac  = 0.5 / pow(Nx * Ny, 2.0);
     double const_fac = 4.0 * pow(M_PI, 2.0);
     #if defined(__ENRG_FLUX)
@@ -1250,9 +1250,11 @@ void ComputeSystemMeasurables(double t, int iter, RK_data_struct* RK_data) {
     #if defined(__SYS_MEASURES)
     // Initialize totals
     if (iter < sys_vars->num_print_steps) {
-		run_data->tot_div[iter]    = 0.0;
-		run_data->tot_energy[iter] = 0.0;
-		run_data->enrg_diss[iter]  = 0.0;
+		run_data->tot_div_sqr[iter]     = 0.0;
+		run_data->tot_uv[iter]          = 0.0;
+		run_data->tot_u_sqr_v_sqr[iter] = 0.0;
+		run_data->tot_energy[iter]      = 0.0;
+		run_data->enrg_diss[iter]       = 0.0;
 	    #if defined(__ENRG_FLUX)
 		run_data->enrg_flux_sbst[iter] = 0.0;
 		run_data->enrg_diss_sbst[iter] = 0.0;
@@ -1285,8 +1287,9 @@ void ComputeSystemMeasurables(double t, int iter, RK_data_struct* RK_data) {
     	for (int j = 0; j < Ny_Fourier; ++j) {
     		indx = tmp + j;
 
-    		// The |k|^2 prefactor
-    		k_sqr = (double )(run_data->k[0][i] * run_data->k[0][i] + run_data->k[1][j] * run_data->k[1][j]);
+    		// The |k|^2 and kx^2 - ky^2 prefactors
+			k_sqr      = (double )(run_data->k[0][i] * run_data->k[0][i] + run_data->k[1][j] * run_data->k[1][j]);
+			k_sqr_diff = (double )(run_data->k[0][i] * run_data->k[0][i] - run_data->k[1][j] * run_data->k[1][j]);
 
     		///--------------------------------- System Measures
     		#if defined(__SYS_MEASURES)
@@ -1304,8 +1307,11 @@ void ComputeSystemMeasurables(double t, int iter, RK_data_struct* RK_data) {
 
 	    		// Update the sums
 	    		if ((j == 0) || (j == Ny_Fourier - 1)) { // only count the 0 and N/2 modes once as they have no conjugate
-	    			run_data->enrg_diss[iter]  += k_sqr * k_sqr * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx])); 
-	    			run_data->tot_energy[iter] += k_sqr * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx]));
+					run_data->tot_uv[iter]          += run_data->k[0][i] * run_data->k[1][j] * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx])); 
+					run_data->tot_u_sqr_v_sqr[iter] += k_sqr_diff * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx])); 
+					run_data->tot_div_sqr[iter]     += k_sqr * k_sqr * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx])); 
+					run_data->enrg_diss[iter]       += k_sqr * k_sqr * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx])); 
+					run_data->tot_energy[iter]      += k_sqr * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx]));
 		    		#if defined(__ENRG_FLUX)
 	    			if ((k_sqr >= lwr_sbst_lim_sqr) && (k_sqr < upr_sbst_lim_sqr)) { // define the subset to consider for the flux and dissipation
 		    			run_data->enrg_flux_sbst[iter] += creal(run_data->psi_hat[indx] * conj(RK_data->RK1[indx]) + conj(run_data->psi_hat[indx]) * RK_data->RK1[indx]) * k_sqr;
@@ -1314,8 +1320,11 @@ void ComputeSystemMeasurables(double t, int iter, RK_data_struct* RK_data) {
 		    		#endif
 	    		}
 	    		else {
-	    			run_data->enrg_diss[iter]  += 2.0 * k_sqr * k_sqr * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx])); 
-	    			run_data->tot_energy[iter] += 2.0 * k_sqr * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx]));
+					run_data->tot_uv[iter]          += 2.0 * run_data->k[0][i] * run_data->k[1][j] * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx])); 
+					run_data->tot_u_sqr_v_sqr[iter] += 2.0 * k_sqr_diff * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx])); 
+					run_data->tot_div_sqr[iter]     += 2.0 * k_sqr * k_sqr * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx])); 
+					run_data->enrg_diss[iter]       += 2.0 * k_sqr * k_sqr * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx])); 
+					run_data->tot_energy[iter]      += 2.0 * k_sqr * cabs(run_data->psi_hat[indx] * conj(run_data->psi_hat[indx]));
 	    			#if defined(__ENRG_FLUX)
 	    			if ((k_sqr >= lwr_sbst_lim_sqr) && (k_sqr < upr_sbst_lim_sqr)) { // define the subset to consider for the flux and dissipation
 	    				run_data->enrg_flux_sbst[iter] += 2.0 * creal(run_data->psi_hat[indx] * conj(RK_data->RK1[indx]) + conj(run_data->psi_hat[indx]) * RK_data->RK1[indx]) * k_sqr;
@@ -1362,8 +1371,11 @@ void ComputeSystemMeasurables(double t, int iter, RK_data_struct* RK_data) {
     #if defined(__SYS_MEASURES)
     if (iter < sys_vars->num_print_steps) {
 	    // Normalize results and take into account computation in Fourier space
-	    run_data->enrg_diss[iter]  *= 2.0 * const_fac * norm_fac;
-	    run_data->tot_energy[iter] *= const_fac * norm_fac;
+		run_data->enrg_diss[iter]       *= 2.0 * const_fac * norm_fac;
+		run_data->tot_energy[iter]      *= const_fac * norm_fac;
+		run_data->tot_div_sqr[iter]     *= const_fac * norm_fac;
+		run_data->tot_uv[iter]          *= const_fac * norm_fac;
+		run_data->tot_u_sqr_v_sqr[iter] *= const_fac * norm_fac;
 	}
     #endif
     #if defined(__ENRG_FLUX)
@@ -1406,10 +1418,23 @@ void InitializeSystemMeasurables(RK_data_struct* RK_data) {
 		exit(1);
 	}	
 
-	// Total Enstrophy
-	run_data->tot_div = (double* )fftw_malloc(sizeof(double) * print_steps);
-	if (run_data->tot_div == NULL) {
+	// Total Divergence squared
+	run_data->tot_div_sqr = (double* )fftw_malloc(sizeof(double) * print_steps);
+	if (run_data->tot_div_sqr == NULL) {
 		fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to allocate memory for the ["CYAN"%s"RESET"]\n-->> Exiting!!!\n", "Total Divergence");
+		exit(1);
+	}	
+
+
+	run_data->tot_uv = (double* )fftw_malloc(sizeof(double) * print_steps);
+	if (run_data->tot_uv == NULL) {
+		fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to allocate memory for the ["CYAN"%s"RESET"]\n-->> Exiting!!!\n", "Conserved Quantity uv");
+		exit(1);
+	}	
+
+	run_data->tot_u_sqr_v_sqr = (double* )fftw_malloc(sizeof(double) * print_steps);
+	if (run_data->tot_u_sqr_v_sqr == NULL) {
+		fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to allocate memory for the ["CYAN"%s"RESET"]\n-->> Exiting!!!\n", "Conserved Quantity u^2 - v^2");
 		exit(1);
 	}	
 
@@ -1830,7 +1855,9 @@ void FreeMemory(RK_data_struct* RK_data) {
 	#endif
 	#if defined(__SYS_MEASURES)
 	fftw_free(run_data->tot_energy);
-	fftw_free(run_data->tot_div);
+	fftw_free(run_data->tot_div_sqr);
+	fftw_free(run_data->tot_uv);
+	fftw_free(run_data->tot_u_sqr_v_sqr);
 	fftw_free(run_data->enrg_diss);
 	#endif
 	#if defined(__ENRG_FLUX)

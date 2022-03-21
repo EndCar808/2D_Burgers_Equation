@@ -189,7 +189,9 @@ typedef struct runtime_data_struct {
 	double* tmp_a_k;		  // Array to hold the amplitudes of the fourier vorticity before marching forward in time
 	double* phi_k;			  // Fourier vorticity phases
 	double* tot_energy;       // Array to hold the total energy over the simulation
-	double* tot_div;		  // Array to hold the total divergence over the simulation
+	double* tot_div_sqr;	  // Array to hold the total divergence squared over the simulation
+	double* tot_uv;           // Array to hold the total u*v over the simulation
+	double* tot_u_sqr_v_sqr;  // Array to hold the total u^2 - v^2 over the simulation
 	double* enrg_diss; 		  // Array to hold the energy dissipation rate 
 	double* time;			  // Array to hold the simulation times
 	double* enrg_flux_sbst;   // Array to hold the energy flux in/out of a subset of modes

@@ -91,6 +91,23 @@ void CreateOutputFilesWriteICs(const long int* N, double dt) {
     }
     #endif
 
+    #if defined(TESTING)
+    // Create and open test data output file
+    OpenTestingFile();
+
+    // Write initial data to test data file
+    int D2dims[2] = {Nx, Ny};
+    WriteTestDataReal(run_data->psi, "Psi_init", 2, D2dims, sys_vars->local_Nx);
+    WriteTestDataFourier(run_data->psi_hat, "Psi_hat_init", Nx, Ny_Fourier, sys_vars->local_Nx);
+
+    // Write space data
+    int D1dims[1] = {Nx};
+    WriteTestDataReal(run_data->x[0], "x", 1, D1dims, sys_vars->local_Nx);    
+    if (!sys_vars->rank) {   
+        status = H5LTmake_dataset(file_info->test_file_handle, "y", 1, D1dims, H5T_NATIVE_DOUBLE, run_data->x[1]);
+    }    
+    #endif
+
     ////////////////////////////////
     /// Write Initial Condtions
     ////////////////////////////////
@@ -321,7 +338,9 @@ void GetOutputDirPath(void) {
     ////////////////////////////////////////////
     if (file_info->file_only) {
         // Update to screen that file only output option is selected
-        printf("\n["YELLOW"NOTE"RESET"] --- File only output option selected...\n");
+        if (!sys_vars->rank) {
+            printf("\n["YELLOW"NOTE"RESET"] --- File only output option selected...\n");
+        }
         
         // ----------------------------------
         // Get Simulation Details
@@ -1119,6 +1138,9 @@ void FinalWriteAndCloseOutputFile(const long int* N, int iters, int save_data_in
         #if defined(__SYS_MEASURES)
         MPI_Reduce(MPI_IN_PLACE, run_data->tot_energy, sys_vars->num_print_steps, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
         MPI_Reduce(MPI_IN_PLACE, run_data->enrg_diss, sys_vars->num_print_steps, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(MPI_IN_PLACE, run_data->tot_div_sqr, sys_vars->num_print_steps, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(MPI_IN_PLACE, run_data->tot_uv, sys_vars->num_print_steps, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(MPI_IN_PLACE, run_data->tot_u_sqr_v_sqr, sys_vars->num_print_steps, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
         #endif
         #if defined(__ENRG_FLUX)
         MPI_Reduce(MPI_IN_PLACE, run_data->enrg_flux_sbst, sys_vars->num_print_steps, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
@@ -1137,6 +1159,18 @@ void FinalWriteAndCloseOutputFile(const long int* N, int iters, int save_data_in
         if ( (H5LTmake_dataset(file_info->output_file_handle, "EnergyDissipation", D1, dims1D, H5T_NATIVE_DOUBLE, run_data->enrg_diss)) < 0) {
             printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"]\n", "EnergyDissipation");
         }
+        // Divergence Squared
+        if ( (H5LTmake_dataset(file_info->output_file_handle, "TotalDivergenceSquared", D1, dims1D, H5T_NATIVE_DOUBLE, run_data->tot_div_sqr)) < 0) {
+            printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"]\n", "TotalDivergenceSquared");
+        }
+        // Total Conserved quantity uv
+        if ( (H5LTmake_dataset(file_info->output_file_handle, "Totaluv", D1, dims1D, H5T_NATIVE_DOUBLE, run_data->tot_uv)) < 0) {
+            printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"]\n", "Totaluv");
+        }
+        // Total Conserved quantity u^2 - v^2
+        if ( (H5LTmake_dataset(file_info->output_file_handle, "TotaluSqrvSqr", D1, dims1D, H5T_NATIVE_DOUBLE, run_data->tot_u_sqr_v_sqr)) < 0) {
+            printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"]\n", "TotaluSqrvSqr");
+        }
         #endif
         #if defined(__ENRG_FLUX)
         // Energy flux in/out of a subset of modes
@@ -1154,6 +1188,9 @@ void FinalWriteAndCloseOutputFile(const long int* N, int iters, int save_data_in
         #if defined(__SYS_MEASURES)
         MPI_Reduce(run_data->tot_energy, NULL,  sys_vars->num_print_steps, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
         MPI_Reduce(run_data->enrg_diss, NULL, sys_vars->num_print_steps, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(run_data->tot_div_sqr, NULL, sys_vars->num_print_steps, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(run_data->tot_uv, NULL, sys_vars->num_print_steps, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Reduce(run_data->tot_u_sqr_v_sqr, NULL, sys_vars->num_print_steps, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
         #endif
         #if defined(__ENRG_FLUX)
         MPI_Reduce(run_data->enrg_flux_sbst, NULL, sys_vars->num_print_steps, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
@@ -1181,6 +1218,126 @@ void FinalWriteAndCloseOutputFile(const long int* N, int iters, int save_data_in
     // Close the complex datatype identifier
     H5Tclose(file_info->COMPLEX_DTYPE);
     #endif
+}
+/**
+ * Function used in testing /debugging to write Real datasets to file
+ * @param data        The data to be written to file
+ * @param dset_name   The name of the dataset
+ * @param dset_rank   The rank of the dataset
+ * @param dset_dims   Array containing the dimensions of the dataset to be written
+ * @param local_dim_x The size of the first dimension of the lcoal dataset
+ */
+void WriteTestDataReal(double* data, char* dset_name, int dset_rank, int* dset_dims, int local_dim_x) {
+
+    // Initialize variables
+    hsize_t rank = dset_rank;
+    hsize_t Dims[rank];
+    herr_t status;
+    
+    // Allocate array for gathering full dataset on root process
+    int mem_size = 1;
+    for (int i = 0; i < (int)rank; ++i) {
+        mem_size *= dset_dims[i];
+    }
+    double* full_data = (double* )fftw_malloc(sizeof(double) * mem_size);
+    if (full_data == NULL) {
+        fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to allocate memory for writing ["CYAN"%s"RESET"] to test data file\n-->> Exiting!!!\n", dset_name);
+        exit(1);
+    }   
+
+    // Gather full dataset on root process
+    int local_size = local_dim_x;
+    for (int i = 1; i < (int)rank; ++i) {
+        local_size *= dset_dims[i];
+    }
+    MPI_Gather(data, local_size, MPI_DOUBLE, full_data, local_size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    
+    // Write data to file on root process
+    if (!sys_vars->rank) {   
+        for (int i = 0; i < (int)rank; ++i) {
+            Dims[i] = dset_dims[i];
+        }
+        status = H5LTmake_dataset(file_info->test_file_handle, dset_name, rank, Dims, H5T_NATIVE_DOUBLE, full_data);
+        if (status < 0) {
+            fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to write ["CYAN"%s"RESET"] to test data file\n-->> Exiting!!!\n", dset_name);
+            exit(1);
+        }
+    }
+
+    // Free memory
+    fftw_free(full_data);
+}
+/**
+ * Function used in testing / debugging to write a Fourier dataset to file
+ * @param data        The data to be written to file
+ * @param dset_name   The name of the dataset to be written 
+ * @param dim_x       The size of the first dimension of the global dataset
+ * @param dim_y       The size of the second dimension of the global dataset
+ * @param local_dim_x The size of first dimension of the local (to each process) dataset
+ */
+void WriteTestDataFourier(fftw_complex* data, char* dset_name, int dim_x, int dim_y, int local_dim_x) {
+    
+    // Initialzie variables
+    hsize_t rank = 2;
+    hsize_t Dims[rank];
+    herr_t status;
+
+    // Allocate array for gathering full dataset on root process
+    fftw_complex* full_data = (fftw_complex* )fftw_malloc(sizeof(fftw_complex) * dim_x * dim_y);
+    if (full_data == NULL) {
+        fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to allocate memory for writing ["CYAN"%s"RESET"] to test data file\n-->> Exiting!!!\n", dset_name);
+        exit(1);
+    }   
+
+    // Gather full dataset on root process
+    MPI_Gather(data, local_dim_x * dim_y, MPI_C_DOUBLE_COMPLEX, full_data, local_dim_x * dim_y, MPI_C_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD);
+    
+    // Write dataset to file
+    if (!sys_vars->rank) {   
+        Dims[0] = dim_x;
+        Dims[1] = dim_y;
+        status = H5LTmake_dataset(file_info->test_file_handle, dset_name, rank, Dims, file_info->COMPLEX_DTYPE, full_data);
+        if (status < 0) {
+            fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to write ["CYAN"%s"RESET"] to test data file\n-->> Exiting!!!\n", dset_name);
+            exit(1);
+        }   
+    }
+
+    // Free memory
+    fftw_free(full_data);
+}
+/**
+ * Function to create and open the file for writinig test data to
+ */
+void OpenTestingFile(void) {
+
+    // Initialzie variables
+    char file_data[512];
+    char tmp_path[512];
+
+    // Get filename
+    sprintf(file_data, "Test_Data_N[%ld,%ld]_u0[%s]_TAG[%s].h5", sys_vars->N[0], sys_vars->N[1], sys_vars->u0,file_info->output_tag);
+
+    // ----------------------------------
+    // Construct File Paths
+    // ---------------------------------- 
+    // Construct main file path
+    strcpy(file_info->test_file_name, file_info->output_dir);
+    strcat(file_info->test_file_name, file_data); 
+
+    // ----------------------------------
+    // Create file
+    // ---------------------------------- 
+    if (!sys_vars->rank) {
+        file_info->test_file_handle = H5Fcreate(file_info->test_file_name, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+        if (file_info->test_file_handle < 0) {
+            fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to create test file: "CYAN"%s"RESET" \n-->> Exiting....\n", file_info->test_file_name);
+            exit(1);
+        }
+
+        // Print Test
+        printf("Test File: "CYAN"%s"RESET"\n\n", file_info->test_file_name);
+    }
 }
 /**
  * Function to create a HDF5 datatype for complex data

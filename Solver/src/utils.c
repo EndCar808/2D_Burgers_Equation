@@ -181,7 +181,7 @@ int GetCMLArgs(int argc, char** argv) {
                 break;
             case 'i':
                 // Read in the initial conditions
-                if (!(strcmp(optarg,"HOPF_COLE"))) {
+                if (!(strcmp(optarg,"HOPF_COLE")) || !(strcmp(optarg,"COLE_HOPF"))) {
                     // The initial condition for the Hopf-Cole transformation
                     strncpy(sys_vars->u0, "HOPF_COLE", 64);
                     break;
