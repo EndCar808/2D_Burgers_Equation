@@ -122,7 +122,11 @@
 #define DP_DELTA 0.8 			// The scaling parameter of the error for the Dormand Prince Scheme
 #define DP_MAX_TRIES 25	        // The maximum number of tries before the dormand prince scheme gives up
 // Initial Conditions parameters
-#define KAPPA 1 				// Wavenumber for the initial condition
+#define KAPPA M_PI 				// Wavenumber for the initial condition.
+#define DECAY_K0 8				// Wavenumber peak for the decaying turbulence initial condition. 
+#define DECAY_E0 0.5			// Initial energy for the decaying turbulence initial condition. 
+#define GAUSS_A	 1.0			// Initial amplitude of the Gaussian blob initial condition.
+#define GAUSS_SIG 0.1			// Standard deviation of the Gaussian blob initial condition.
 // System checking parameters
 #define MIN_STEP_SIZE 1e-10 	// The minimum allowed stepsize for the solver 
 #define MAX_ITERS 1e+12			// The maximum iterations to perform

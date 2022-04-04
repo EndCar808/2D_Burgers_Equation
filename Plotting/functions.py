@@ -255,8 +255,11 @@ def import_data(input_file, sim_data, method = "default"):
             self.psi_hat    = np.ones((sim_data.ndata, sim_data.Nx, sim_data.Nk)) * np.complex(0.0, 0.0)
             self.time       = np.zeros((sim_data.ndata, ))
             ## Allocate system measure arrays
-            self.tot_enrg  = np.zeros((int(sim_data.ndata * 2), ))
-            self.enrg_diss = np.zeros((int(sim_data.ndata * 2), ))
+            self.tot_enrg       = np.zeros((int(sim_data.ndata * 2), ))
+            self.tot_div_sqr    = np.zeros((int(sim_data.ndata * 2), ))
+            self.tot_uv         = np.zeros((int(sim_data.ndata * 2), ))
+            self.tot_uvsqr      = np.zeros((int(sim_data.ndata * 2), ))
+            self.enrg_diss      = np.zeros((int(sim_data.ndata * 2), ))
             self.enrg_diss_sbst = np.zeros((int(sim_data.ndata * 2), ))
             self.enrg_flux_sbst = np.zeros((int(sim_data.ndata * 2), ))
             ## Allocate spatial arrays
@@ -312,6 +315,12 @@ def import_data(input_file, sim_data, method = "default"):
         ## Read system measures
         if 'TotalEnergy' in list(input_file.keys()):
             data.tot_enrg = input_file['TotalEnergy'][:]
+        if 'TotalDivergenceSquared' in list(input_file.keys()):
+            data.tot_div_sqr = input_file['TotalDivergenceSquared'][:]
+        if 'Totaluv' in list(input_file.keys()):
+            data.tot_uv = input_file['Totaluv'][:]
+        if 'TotaluSqrvSqr' in list(input_file.keys()):
+            data.tot_usqr_vsqr = input_file['TotaluSqrvSqr'][:]
         if 'EnergyDissipation' in list(input_file.keys()):
             data.enrg_diss = input_file['EnergyDissipation'][:]
         if 'EnergyDissSubset' in list(input_file.keys()):

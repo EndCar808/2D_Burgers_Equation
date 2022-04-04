@@ -110,7 +110,7 @@ def make_video(fileanme, snapname, fps = 30):
 #######################################
 ##       SUMMARY SNAP FUNCTIONS      ##
 #######################################
-def plot_summary_snaps(out_dir, i, psi, time, x, y, enrg_spec, Nx):
+def plot_summary_snaps(out_dir, i, psi, time, x, y, enrg_spec, abs_err, tot_enrg, tot_div_sqr, tot_uv, tot_usqr_vsqr, Nx):
 
     """
     Plots summary snaps for each iteration of the simulation. Plot: velocity potential, energy spectra, dissipation, flux and totals.
@@ -121,7 +121,7 @@ def plot_summary_snaps(out_dir, i, psi, time, x, y, enrg_spec, Nx):
 
     ## Create Figure
     fig = plt.figure(figsize = (16, 8))
-    gs  = GridSpec(2, 2, hspace = 0.6, wspace = 0.3)
+    gs  = GridSpec(2, 2, hspace = 0.3, wspace = 0.2)
 
     ##-------------------------
     ## Plot Velocity Potential   
@@ -143,18 +143,55 @@ def plot_summary_snaps(out_dir, i, psi, time, x, y, enrg_spec, Nx):
     cb1   = plt.colorbar(im1, cax = cbax1)
     cb1.set_label(r"$\psi(x, y)$")
 
+    ##-------------------------
+    ## Plot Error   
+    ##-------------------------
+    ax2 = fig.add_subplot(gs[0, 1])
+    im2 = ax2.imshow(abs_err, extent = (y[0], y[-1], x[-1], x[0]), cmap = "viridis") # , vmin = w_min, vmax = w_max 
+    ax2.set_xlabel(r"$y$")
+    ax2.set_ylabel(r"$x$")
+    ax2.set_xlim(0.0, y[-1])
+    ax2.set_ylim(0.0, x[-1])
+    ax2.set_xticks([0.0, np.pi/2.0, np.pi, 1.5*np.pi, y[-1]])
+    ax2.set_xticklabels([r"$0$", r"$\frac{\pi}{2}$", r"$\pi$", r"$\frac{3\pi}{2}$", r"$2 \pi$"])
+    ax2.set_yticks([0.0, np.pi/2.0, np.pi, 1.5*np.pi, x[-1]])
+    ax2.set_yticklabels([r"$0$", r"$\frac{\pi}{2}$", r"$\pi$", r"$\frac{3\pi}{2}$", r"$2 \pi$"])
+    ax2.set_title(r"Absolute Error")
+    ## Plot colourbar
+    div2  = make_axes_locatable(ax2)
+    cbax2 = div2.append_axes("right", size = "10%", pad = 0.05)
+    cb2   = plt.colorbar(im2, cax = cbax2)
+    cb2.set_label(r"$\psi(x, y)$")
+    
 
     #-------------------------
     # Plot Energy Spectrum   
     #-------------------------
     kindx = int(Nx / 3 + 1)
-    ax2 = fig.add_subplot(gs[0, 1])
-    ax2.plot(enrg_spec[:kindx])
-    ax2.set_xlabel(r"$|\mathbf{k}|$")
-    ax2.set_ylabel(r"$\mathcal{K}(| \mathbf{k} |)$")
-    ax2.set_title(r"Energy Spectrum")
-    ax2.set_yscale('log')
-    ax2.set_xscale('log')
+    ax3 = fig.add_subplot(gs[1, 0])
+    ax3.plot(enrg_spec[:kindx])
+    ax3.set_xlabel(r"$|\mathbf{k}|$")
+    ax3.set_ylabel(r"$\mathcal{K}(| \mathbf{k} |)$")
+    ax3.set_title(r"Energy Spectrum")
+    ax3.set_yscale('log')
+    ax3.set_xscale('log')
+    ax3.grid()
+
+    #-------------------------
+    # Plot System Quantities   
+    #-------------------------
+    kindx = int(Nx / 3 + 1)
+    ax4 = fig.add_subplot(gs[1, 1])
+    ax4.plot(time[:i], tot_enrg)
+    ax4.plot(time[:i], tot_div_sqr)
+    ax4.plot(time[:i], tot_uv)
+    ax4.plot(time[:i], tot_usqr_vsqr)
+    ax4.set_xlim(0, time[-1])
+    ax4.set_xlabel(r"$t$")
+    ax4.set_title(r"System Quantities")
+    # ax4.set_yscale('log')
+    ax4.legend([r"Total Energy", r"Total Div Sqr", r"Total $uv$", r"Total $u^2 - v^2$"])
+    ax4.grid()
 
     ## Save figure
     plt.savefig(out_dir + "SNAP_{:05d}.png".format(i), bbox_inches='tight') 

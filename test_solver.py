@@ -121,9 +121,9 @@ if __name__ == "__main__":
 	if cmdargs.test_mode in ["SOLVER"]:
 		
 		## Get test case parameters
-		Nx        = 128
-		Ny        = 128
-		nu        = 1e-6
+		Nx        = 16
+		Ny        = 16
+		nu        = 1e-3
 		t0        = 0.0
 		T         = 1.0
 		dt        = 1e-3
@@ -189,22 +189,58 @@ if __name__ == "__main__":
 				c_code_test_data = output_dir + f
 
 				with h5py.File(c_code_test_data, 'r') as ct_file:
-					ct_x       = ct_file["x"][:]
-					ct_y       = ct_file["y"][:]
-					ct_psi     = ct_file["Psi_init"][:, :]
-					ct_psi_hat = ct_file["Psi_hat_init"][:, :]
-			
+					## Get the number of snapshots
+					ndata = len([g for g in ct_file.keys() if 'Iter' in g])
+
+					## Get the space arrays
+					ct_x = ct_file["x"][:]
+					ct_y = ct_file["y"][:]
+
+					## Read in the snapshot data
+					nn = 0
+					ct_psi     = np.zeros((ndata, Nx, Ny))
+					ct_psi_hat = np.ones((ndata, Nx, Ny//2 + 1)) * np.complex(0.0, 0.0)
+					ct_RK1     = np.ones((ndata, Nx, Ny//2 + 1)) * np.complex(0.0, 0.0)
+					for group in ct_file.keys():
+						if "Iter" in group:
+							if 'psi' in list(ct_file[group].keys()):
+								ct_psi[nn, :, :] = ct_file[group]["psi"][:, :]
+							if 'psi_hat' in list(ct_file[group].keys()):
+								ct_psi_hat[nn, :, :] = ct_file[group]["psi_hat"][:, :]
+							if 'RK1' in list(ct_file[group].keys()):
+								ct_RK1[nn, :, :] = ct_file[group]["RK1"][:, :]
+							nn += 1
+							
 			## Check if python code data exists if not create it
 			if "PyTestData" in f:
 				py_code_data = output_dir + f
 
 				## Read in data
 				with h5py.File(py_code_data, 'r') as py_file:
+					## Get the number of snapshots
+					ndata = len([g for g in py_file.keys() if 'Iter' in g])
+
+					## Get the space arrays
 					py_x = py_file["x"][:]
 					py_y = py_file["y"][:]
-					py_psi     = py_file["Psi_init"][:, :]
-					py_psi_hat = py_file["Psi_hat_init"][:, :]
 
+					## Read in the snapshot data
+					nn = 0
+					py_psi     = np.zeros((ndata, Nx, Ny))
+					py_psi_hat = np.ones((ndata, Nx, Ny//2 + 1)) * np.complex(0.0, 0.0)
+					py_RK1     = np.ones((ndata, Nx, Ny//2 + 1)) * np.complex(0.0, 0.0)
+					for group in py_file.keys():
+						if "Iter" in group:
+							if 'psi' in list(py_file[group].keys()):
+								py_psi[nn, :, :] = py_file[group]["psi"][:, :]
+							if 'psi_hat' in list(py_file[group].keys()):
+								py_psi_hat[nn, :, :] = py_file[group]["psi_hat"][:, :]
+							if 'RK1' in list(py_file[group].keys()):
+								py_RK1[nn, :, :] = py_file[group]["RK1"][:, :]
+							nn += 1
+		
+
+		## If there was data files missing create them now
 		if not c_code_data or not c_code_test_data:
 			print(tc.Y + "No C code data...now creating" + tc.Rst)
 			## Run c code if code file not there
@@ -219,28 +255,27 @@ if __name__ == "__main__":
 		###############################
 		##     COMPARE TEST DATA     ##
 		###############################
-		abs_tol = 1e-10
-		rel_tol = 1e-10
+		abs_tol = 1e-08  ## 1e-08
+		rel_tol = 1e-05  ## 1e-05
 		print("Compare Space Data")
 		print(py_x.shape == ct_x.shape)
 		print(py_y.shape == ct_y.shape)
 		print(np.allclose(ct_x, py_x, rtol = rel_tol, atol = abs_tol))
 		print(np.allclose(ct_y, py_y, rtol = rel_tol, atol = abs_tol))
-		for i in range(Ny):
-			print("[{}]: {} {}\t {}".format(i, py_y[i], ct_y[i], py_y[i] - ct_y[i]))
 
 		print("Compare Shape")
 		print(py_psi.shape == ct_psi.shape)
 		print(py_psi_hat.shape == ct_psi_hat.shape)
 
 		print("Compare Psi Data")
-		print(np.allclose(py_psi, ct_psi, rtol = rel_tol, atol = abs_tol))
-		for i in range(10):
-			for j in range(10):
-				print("psi[{}, {}]: {}\t {}".format(i, j, py_psi[i, j], ct_psi[i, j]))
-			print()
-		print(np.allclose(py_psi_hat, ct_psi_hat, ))
-		# for i in range(10):
-		# 	for j in range(10):
-		# 		print("psi[{}, {}]: {} {} \t {} {}".format(i, j, np.real(py_psi_hat[i, j]), np.real(ct_psi_hat[i, j]), np.imag(py_psi_hat[i, j]), np.imag(ct_psi_hat[i, j])))
-		# 	print()
+		print(np.linalg.norm(py_psi[0, :, :] - ct_psi[0, :, :]))
+		print(np.linalg.norm(py_psi[0, :, :] - ct_psi[0, :, :], ord = np.inf))
+
+		print("Compare Psi Hat Data")
+		print(np.linalg.norm(py_psi_hat[0, :, :] - ct_psi_hat[0, :, :]))
+		print(np.linalg.norm(py_psi_hat[0, :, :] - ct_psi_hat[0, :, :], ord = np.inf))
+
+		print("Compare Psi / Psi_hat Data")
+		for t in range(np.amax([py_RK1.shape[0], ct_RK1.shape[0]])):
+			print("t = {} - L2   | psi_hat: {:0.10g} \t - psi: {:0.10g}".format(t, np.linalg.norm(py_psi_hat[t, :, :] - ct_psi_hat[t, :, :]), np.linalg.norm(py_psi[t, :, :] - ct_psi[t, :, :])))
+			print("t = {} - Linf | psi_hat: {:0.10g} \t - psi: {:0.10g}".format(t, np.linalg.norm(py_psi_hat[t, :, :] - ct_psi_hat[t, :, :], ord = np.inf), np.linalg.norm(py_psi[t, :, :] - ct_psi[t, :, :], ord = np.inf)))

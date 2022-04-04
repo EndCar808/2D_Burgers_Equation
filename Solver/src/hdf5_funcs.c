@@ -40,13 +40,16 @@ void CreateOutputFilesWriteICs(const long int* N, double dt) {
     #if defined(__ENRG_SPECT) || defined(__ENRG_FLUX_SPECT)
     hid_t spectra_group_id;
     #endif
+    #if defined(TESTING)
+    hid_t test_group_id;
+    #endif
     char group_name[128];
     herr_t status;
     hid_t plist_id;
     int tmp;
     int indx;
 
-    #if (defined(__MODES) || defined(__PSI_FOUR)) && !defined(DEBUG)
+    #if (defined(__MODES) || defined(__PSI_FOUR))
     // Create compound datatype for the complex datasets
     file_info->COMPLEX_DTYPE = CreateComplexDatatype();
     #endif
@@ -94,18 +97,6 @@ void CreateOutputFilesWriteICs(const long int* N, double dt) {
     #if defined(TESTING)
     // Create and open test data output file
     OpenTestingFile();
-
-    // Write initial data to test data file
-    int D2dims[2] = {Nx, Ny};
-    WriteTestDataReal(run_data->psi, "Psi_init", 2, D2dims, sys_vars->local_Nx);
-    WriteTestDataFourier(run_data->psi_hat, "Psi_hat_init", Nx, Ny_Fourier, sys_vars->local_Nx);
-
-    // Write space data
-    int D1dims[1] = {Nx};
-    WriteTestDataReal(run_data->x[0], "x", 1, D1dims, sys_vars->local_Nx);    
-    if (!sys_vars->rank) {   
-        status = H5LTmake_dataset(file_info->test_file_handle, "y", 1, D1dims, H5T_NATIVE_DOUBLE, run_data->x[1]);
-    }    
     #endif
 
     ////////////////////////////////
@@ -122,6 +113,11 @@ void CreateOutputFilesWriteICs(const long int* N, double dt) {
     #if defined(__ENRG_SPECT) || defined(__ENRG_FLUX_SPECT)
     if (!sys_vars->rank) {
         spectra_group_id = CreateGroup(file_info->spectra_file_handle, file_info->spectra_file_name, group_name, 0.0, dt, 0);
+    }
+    #endif
+    #if defined(TESTING)
+    if (!sys_vars->rank) {
+        test_group_id = CreateGroup(file_info->test_file_handle, file_info->test_file_name, group_name, 0.0, dt, 0);
     }
     #endif
 
@@ -281,6 +277,12 @@ void CreateOutputFilesWriteICs(const long int* N, double dt) {
         #endif
     }
     #endif
+
+    ///-------------------------------- Write initial data to test data file
+    #if defined(TESTING)
+    WriteTestDataReal(test_group_id, run_data->psi, "psi", Nx, Ny, sys_vars->local_Nx);
+    WriteTestDataFourier(test_group_id, run_data->psi_hat, "psi_hat", Nx, Ny_Fourier, sys_vars->local_Nx);    
+    #endif
     #endif
 
 
@@ -300,6 +302,16 @@ void CreateOutputFilesWriteICs(const long int* N, double dt) {
         status = H5Fclose(file_info->spectra_file_handle);
         if (status < 0) {
             fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to close output file ["CYAN"%s"RESET"] at: Iter = ["CYAN"%d"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", file_info->spectra_file_name, 0, 0.0);
+            exit(1);        
+        }
+    }
+    #endif
+    #if defined(TESTING)
+    if (!sys_vars->rank) {
+        status = H5Gclose(test_group_id);
+        status = H5Fclose(file_info->test_file_handle);
+        if (status < 0) {
+            fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to close output file ["CYAN"%s"RESET"] at: Iter = ["CYAN"%d"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", file_info->test_file_name, 0, 0.0);
             exit(1);        
         }
     }
@@ -472,7 +484,7 @@ void GetOutputDirPath(void) {
  * @param dt    The current timestep being used
  * @param iters The current iteration
  */
-void WriteDataToFile(double t, double dt, long int iters) {
+void WriteDataToFile(double t, double dt, long int iters, RK_data_struct* RK_data) {
 
     // Initialize Variables
     int tmp;
@@ -485,6 +497,9 @@ void WriteDataToFile(double t, double dt, long int iters) {
     hid_t main_group_id;
     #if defined(__ENRG_SPECT) || defined(__ENRG_FLUX_SPECT)
     hid_t spectra_group_id;
+    #endif
+    #if defined(TESTING)
+    hid_t test_group_id;
     #endif
     hid_t plist_id;
     static const int d_set_rank2D = 2;
@@ -544,6 +559,26 @@ void WriteDataToFile(double t, double dt, long int iters) {
     }
     #endif
 
+    #if defined(TESTING)
+    if (!sys_vars->rank) {
+        // Check if test file exists - open it if it does if not create it
+        if (access(file_info->output_file_name, F_OK) != 0) {
+            file_info->test_file_handle = H5Fcreate(file_info->test_file_name, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+            if (file_info->test_file_handle < 0) {
+                fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to create test file ["CYAN"%s"RESET"] at: Iter = ["CYAN"%ld"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", file_info->test_file_name, iters, t);
+                exit(1);
+            }
+        }
+        else {
+            // Open file with parallel I/O access properties
+            file_info->test_file_handle = H5Fopen(file_info->test_file_name, H5F_ACC_RDWR, H5P_DEFAULT);
+            if (file_info->test_file_handle < 0) {
+                fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to open test file ["CYAN"%s"RESET"] at: Iter = ["CYAN"%ld"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", file_info->test_file_name, iters, t);
+                exit(1);
+            }
+        }
+    }
+    #endif
 
     // -------------------------------
     // Create Group 
@@ -556,6 +591,11 @@ void WriteDataToFile(double t, double dt, long int iters) {
     #if defined(__ENRG_SPECT) || defined(__ENRG_FLUX_SPECT)
     if (!sys_vars->rank) {
         spectra_group_id = CreateGroup(file_info->spectra_file_handle, file_info->spectra_file_name, group_name, t, dt, iters);
+    }
+    #endif
+    #if defined(TESTING)
+    if (!sys_vars->rank) {
+        test_group_id = CreateGroup(file_info->test_file_handle, file_info->test_file_name, group_name, t, dt, iters);
     }
     #endif
 
@@ -600,7 +640,7 @@ void WriteDataToFile(double t, double dt, long int iters) {
     mem_space_dims2D[1] = (Ny + 2);
 
     // Write the real space vorticity
-    WriteDataReal(t, (int)iters, main_group_id, "psi", H5T_NATIVE_DOUBLE, d_set_rank2D, dset_dims2D, slab_dims2D, mem_space_dims2D, sys_vars->local_Nx_start, run_data->u);
+    WriteDataReal(t, (int)iters, main_group_id, "psi", H5T_NATIVE_DOUBLE, d_set_rank2D, dset_dims2D, slab_dims2D, mem_space_dims2D, sys_vars->local_Nx_start, run_data->psi);
     #endif
 
     ///--------------------------- Get the Fourier Velocities
@@ -706,6 +746,15 @@ void WriteDataToFile(double t, double dt, long int iters) {
     }
     #endif
 
+    ///------------------------------ Write Test Data
+    #if defined(TESTING)
+    WriteTestDataReal(test_group_id, run_data->psi, "psi", Nx, Ny, sys_vars->local_Nx);
+    WriteTestDataFourier(test_group_id, RK_data->RK1, "RK1", Nx, Ny_Fourier, sys_vars->local_Nx);    
+    WriteTestDataFourier(test_group_id, RK_data->RK2, "RK2", Nx, Ny_Fourier, sys_vars->local_Nx);    
+    WriteTestDataFourier(test_group_id, RK_data->RK3, "RK3", Nx, Ny_Fourier, sys_vars->local_Nx);    
+    WriteTestDataFourier(test_group_id, RK_data->RK4, "RK4", Nx, Ny_Fourier, sys_vars->local_Nx);
+    WriteTestDataFourier(test_group_id, run_data->psi_hat, "psi_hat", Nx, Ny_Fourier, sys_vars->local_Nx);
+    #endif
 
     // -------------------------------
     // Close identifiers and File
@@ -722,6 +771,16 @@ void WriteDataToFile(double t, double dt, long int iters) {
         status = H5Fclose(file_info->spectra_file_handle);
         if (status < 0) {
             fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to close output file ["CYAN"%s"RESET"] at: Iter = ["CYAN"%ld"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", file_info->spectra_file_name, iters, t);
+            exit(1);        
+        }
+    }
+    #endif
+    #if defined(TESTING)
+    if (!sys_vars->rank) {
+        status = H5Gclose(test_group_id);
+        status = H5Fclose(file_info->test_file_handle);
+        if (status < 0) {
+            fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to close output file ["CYAN"%s"RESET"] at: Iter = ["CYAN"%ld"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", file_info->test_file_name, iters, t);
             exit(1);        
         }
     }
@@ -833,7 +892,7 @@ void WriteDataFourier(double t, int iters, hid_t group_id, char* dset_name, hid_
     for (int i = 0; i < dset_rank; ++i) {
         dims[i] = dset_dims[i];
     }
-    dset_space = H5Screate_simple(Dims, dims, NULL); 
+    dset_space = H5Screate_simple(Dims, dims, NULL);
     if (dset_space < 0) {
         fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to set dataspace for dataset ["CYAN"%s"RESET"] at: Iter = ["CYAN"%d"RESET"] t = ["CYAN"%lf"RESET"]\n-->> Exiting...\n", dset_name, iters, t);
         exit(1);
@@ -1067,11 +1126,21 @@ void FinalWriteAndCloseOutputFile(const long int* N, int iters, int save_data_in
     /////////////////////////////////
     // Repon Output file with read/write permissions
     if (!(sys_vars->rank)) {
+        // Open Main File
         file_info->output_file_handle = H5Fopen(file_info->output_file_name, H5F_ACC_RDWR , H5P_DEFAULT);
         if (file_info->output_file_handle < 0) {
-            fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to reopen output file for writing non chunked/slabbed datasets! \n-->>Exiting....\n");
+            fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to reopen Main output file for writing non chunked/slabbed datasets! \n-->>Exiting....\n");
             exit(1);
         }
+
+        // Open Test File
+        #if defined(TESTING)
+        file_info->test_file_handle = H5Fopen(file_info->test_file_name, H5F_ACC_RDWR , H5P_DEFAULT);
+        if (file_info->test_file_handle < 0) {
+            fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to reopen Test output file for writing non chunked/slabbed datasets! \n-->>Exiting....\n");
+            exit(1);
+        }
+        #endif
     }
 
     // -------------------------------
@@ -1092,6 +1161,18 @@ void FinalWriteAndCloseOutputFile(const long int* N, int iters, int save_data_in
         if ( (H5LTmake_dataset(file_info->output_file_handle, "ky", D1, dims1D, H5T_NATIVE_INT, run_data->k[1])) < 0) {
             printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"]\n", "ky");
         }
+
+        // Write to Test file
+        #if defined(TESTING)
+        dims1D[0] = Nx;
+        if ( (H5LTmake_dataset(file_info->test_file_handle, "kx", D1, dims1D, H5T_NATIVE_INT, k0)) < 0) {
+            printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"] to test data file\n", "kx");
+        }
+        dims1D[0] = Ny_Fourier;
+        if ( (H5LTmake_dataset(file_info->test_file_handle, "ky", D1, dims1D, H5T_NATIVE_INT, run_data->k[1])) < 0) {
+            printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"] to test data file\n", "ky");
+        }
+        #endif
     }
     fftw_free(k0);
     #endif
@@ -1114,6 +1195,18 @@ void FinalWriteAndCloseOutputFile(const long int* N, int iters, int save_data_in
         if ( (H5LTmake_dataset(file_info->output_file_handle, "y", D1, dims1D, H5T_NATIVE_DOUBLE, run_data->x[1]))< 0) {
             printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"]\n", "y");
         }
+
+        // Write to Test data file
+        #if defined(TESTING)
+        dims1D[0] = Nx;
+        if ( (H5LTmake_dataset(file_info->test_file_handle, "x", D1, dims1D, H5T_NATIVE_DOUBLE, x0)) < 0) {
+            printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"] to test data file\n", "x");
+        }
+        dims1D[0] = Ny;
+        if ( (H5LTmake_dataset(file_info->test_file_handle, "y", D1, dims1D, H5T_NATIVE_DOUBLE, run_data->x[1]))< 0) {
+            printf("\n["MAGENTA"WARNING"RESET"] --- Failed to make dataset ["CYAN"%s"RESET"] to test data file\n", "y");
+        }
+        #endif
     }
     fftw_free(x0);
     #endif
@@ -1208,7 +1301,7 @@ void FinalWriteAndCloseOutputFile(const long int* N, int iters, int save_data_in
             exit(1);
         }
     }
-    #if defined(DEBUG)
+    #if defined(TESTING)
     if (!sys_vars->rank) {
         // Close test / debug file
         H5Fclose(file_info->test_file_handle);
@@ -1227,37 +1320,34 @@ void FinalWriteAndCloseOutputFile(const long int* N, int iters, int save_data_in
  * @param dset_dims   Array containing the dimensions of the dataset to be written
  * @param local_dim_x The size of the first dimension of the lcoal dataset
  */
-void WriteTestDataReal(double* data, char* dset_name, int dset_rank, int* dset_dims, int local_dim_x) {
+void WriteTestDataReal(hid_t group_id, double* data, char* dset_name, int dim_x, int dim_y, int local_dim_x) {
 
     // Initialize variables
-    hsize_t rank = dset_rank;
+    hsize_t rank = 2;
     hsize_t Dims[rank];
     herr_t status;
     
     // Allocate array for gathering full dataset on root process
-    int mem_size = 1;
-    for (int i = 0; i < (int)rank; ++i) {
-        mem_size *= dset_dims[i];
-    }
-    double* full_data = (double* )fftw_malloc(sizeof(double) * mem_size);
-    if (full_data == NULL) {
+    double* full_data = (double* )fftw_malloc(sizeof(double) * dim_x * (dim_y + 2));
+    double* data_set  = (double* )fftw_malloc(sizeof(double) * dim_x * dim_y);
+    if (full_data == NULL || data_set == NULL) {
         fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to allocate memory for writing ["CYAN"%s"RESET"] to test data file\n-->> Exiting!!!\n", dset_name);
         exit(1);
     }   
 
     // Gather full dataset on root process
-    int local_size = local_dim_x;
-    for (int i = 1; i < (int)rank; ++i) {
-        local_size *= dset_dims[i];
-    }
-    MPI_Gather(data, local_size, MPI_DOUBLE, full_data, local_size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Gather(data, local_dim_x * (dim_y + 2), MPI_DOUBLE, full_data, local_dim_x * (dim_y + 2), MPI_DOUBLE, 0, MPI_COMM_WORLD);
     
     // Write data to file on root process
     if (!sys_vars->rank) {   
-        for (int i = 0; i < (int)rank; ++i) {
-            Dims[i] = dset_dims[i];
-        }
-        status = H5LTmake_dataset(file_info->test_file_handle, dset_name, rank, Dims, H5T_NATIVE_DOUBLE, full_data);
+        for (int i = 0; i < dim_x; ++i) {
+            for (int j = 0; j < dim_y; ++j) {
+                data_set[i * dim_y + j] = full_data[i * (dim_y + 2) + j];
+            }
+        }        
+        Dims[0] = dim_x;
+        Dims[1] = dim_y;
+        status = H5LTmake_dataset(group_id, dset_name, rank, Dims, H5T_NATIVE_DOUBLE, data_set);
         if (status < 0) {
             fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to write ["CYAN"%s"RESET"] to test data file\n-->> Exiting!!!\n", dset_name);
             exit(1);
@@ -1266,6 +1356,7 @@ void WriteTestDataReal(double* data, char* dset_name, int dset_rank, int* dset_d
 
     // Free memory
     fftw_free(full_data);
+    fftw_free(data_set);
 }
 /**
  * Function used in testing / debugging to write a Fourier dataset to file
@@ -1275,7 +1366,7 @@ void WriteTestDataReal(double* data, char* dset_name, int dset_rank, int* dset_d
  * @param dim_y       The size of the second dimension of the global dataset
  * @param local_dim_x The size of first dimension of the local (to each process) dataset
  */
-void WriteTestDataFourier(fftw_complex* data, char* dset_name, int dim_x, int dim_y, int local_dim_x) {
+void WriteTestDataFourier(hid_t group_id, fftw_complex* data, char* dset_name, int dim_x, int dim_y, int local_dim_x) {
     
     // Initialzie variables
     hsize_t rank = 2;
@@ -1296,7 +1387,7 @@ void WriteTestDataFourier(fftw_complex* data, char* dset_name, int dim_x, int di
     if (!sys_vars->rank) {   
         Dims[0] = dim_x;
         Dims[1] = dim_y;
-        status = H5LTmake_dataset(file_info->test_file_handle, dset_name, rank, Dims, file_info->COMPLEX_DTYPE, full_data);
+        status = H5LTmake_dataset(group_id, dset_name, rank, Dims, file_info->COMPLEX_DTYPE, full_data);
         if (status < 0) {
             fprintf(stderr, "\n["RED"ERROR"RESET"] --- Unable to write ["CYAN"%s"RESET"] to test data file\n-->> Exiting!!!\n", dset_name);
             exit(1);

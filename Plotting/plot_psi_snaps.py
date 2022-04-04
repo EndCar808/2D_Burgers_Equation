@@ -194,6 +194,11 @@ if __name__ == '__main__':
                             run_data.x, 
                             run_data.y, 
                             spec_data.enrg_spec[i, :], 
+                            np.absolute(run_data.psi[i, :, :] - run_data.exact_soln[i, :, :]), 
+                            run_data.tot_enrg[:i], 
+                            run_data.tot_div_sqr[:i], 
+                            run_data.tot_uv[:i], 
+                            run_data.tot_usqr_vsqr[:i], 
                             sys_vars.Nx)) for i in range(run_data.psi.shape[0]))]
 
                 ## Run commmands in parallel
@@ -202,7 +207,7 @@ if __name__ == '__main__':
             else:
                 ## Loop over snapshots
                 for i in range(sys_vars.ndata):
-                    plot_summary_snaps(cmdargs.out_dir, i, run_data.psi[i, :, :], run_data.time, run_data.x, run_data.y, spec_data.enrg_spec[i, :], sys_vars.Nx)
+                    plot_summary_snaps(cmdargs.out_dir, i, run_data.psi[i, :, :], run_data.time, run_data.x, run_data.y, spec_data.enrg_spec[i, :], np.absolute(run_data.psi[i, :, :] - run_data.exact_soln[i, :, :]), run_data.tot_enrg[:i], run_data.tot_div_sqr[:i], run_data.tot_uv[:i], run_data.tot_usqr_vsqr[:i], sys_vars.Nx)
 
 
         ## End timer

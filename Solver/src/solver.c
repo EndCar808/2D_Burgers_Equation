@@ -172,7 +172,7 @@ void SpectralSolve(void) {
 			ComputeSystemMeasurables(t, save_data_indx, RK_data);
 
 			// Write the appropriate datasets to file
-			WriteDataToFile(t, dt, save_data_indx);
+			WriteDataToFile(t, dt, save_data_indx, RK_data);
 			
 			// Update saving data index
 			save_data_indx++;
@@ -757,7 +757,7 @@ void InitialConditions(double* psi, fftw_complex* psi_hat, const long int* N, do
 				indx = (tmp + j);
 
 				// Get the initial condition that solves the Diffusion equation
-				theta = cos(KAPPA * run_data->x[0][i]) * sin(KAPPA * run_data->x[1][j]) * exp(-2.0 * sys_vars->NU * 0.0) + 2.0;
+				theta = cos(run_data->x[0][i]) * sin(run_data->x[1][j]) * exp(-2.0 * sys_vars->NU * 0.0) + 2.0;
 
 				// Fill the velocity potential
 				psi[indx] = 2.0 * sys_vars->NU * log(theta);
@@ -767,7 +767,7 @@ void InitialConditions(double* psi, fftw_complex* psi_hat, const long int* N, do
 		// Transform velocities to Fourier space & dealias
 		fftw_mpi_execute_dft_r2c(sys_vars->fftw_2d_dft_r2c, psi, psi_hat);
 	}
-	else if(!(strcmp(sys_vars->u0, "TG_VEL"))) {
+	else if(!(strcmp(sys_vars->u0, "TG_VEL_POT"))) {
 		// ------------------------------------------------
 		// Taylor Green Initial Condition - Real Space
 		// ------------------------------------------------
@@ -783,6 +783,91 @@ void InitialConditions(double* psi, fftw_complex* psi_hat, const long int* N, do
 
 		// Transform velocities to Fourier space & dealias
 		fftw_mpi_execute_dft_r2c(sys_vars->fftw_2d_dft_r2c, psi, psi_hat);
+	}
+	else if(!(strcmp(sys_vars->u0, "GAUSS"))) {
+		// ------------------------------------------------
+		// Gaussian Blob Initial Condition
+		// ------------------------------------------------
+		for (int i = 0; i < local_Nx; ++i) {
+			tmp = i * (Ny + 2);
+			for (int j = 0; j < Ny; ++j) {
+				indx = (tmp + j);
+
+				// Fill the velocity potential with the Gaussian blob centred at the origin
+				psi[indx] = GAUSS_A * exp(-((run_data->x[0][i] - M_PI) * (run_data->x[0][i] - M_PI) / (2.0 * GAUSS_SIG) + (run_data->x[1][j] - M_PI) * (run_data->x[1][j] - M_PI) / (2.0 * GAUSS_SIG)));
+			}
+		}
+
+		// Transform velocities to Fourier space & dealias
+		fftw_mpi_execute_dft_r2c(sys_vars->fftw_2d_dft_r2c, psi, psi_hat);
+	}
+	else if(!(strcmp(sys_vars->u0, "DECAY"))) {
+		// ------------------------------------------------
+		// Freely Decaying Initial Condition
+		// ------------------------------------------------
+		double sqrt_k, spec_1d, random;
+
+		///------------------------- Initialize the Fourier space velocity potential with a prescibed spectrum
+		for (int i = 0; i < local_Nx; ++i) {
+			tmp = i * Ny_Fourier;
+			for (int j = 0; j < Ny_Fourier; ++j) {
+				indx = tmp + j;
+
+				// Compute the sqrt(k)
+				sqrt_k = sqrt((double) (run_data->k[0][i] * run_data->k[0][i] + run_data->k[1][j] * run_data->k[1][j]));
+
+				// Compute the 1d spectrum 
+				spec_1d = sqrt_k / (1.0 + pow(sqrt_k, 4.0) / DECAY_K0);
+
+				// Get uniform random number between 0.0 and 1
+				random = (double) rand() / (double) RAND_MAX;
+
+				// Fill the Fourier space velocity potential
+				if ((run_data->k[0][i] == 0) && (run_data->k[0][i] == 0)) {
+					psi_hat[indx] = 0.0;
+				}
+				else {
+					psi_hat[indx] = sqrt(spec_1d * (sqrt_k / (2.0 * M_PI))) * cexp(2.0 * M_PI * random);
+				}
+			}
+		}
+
+
+		///------------------------- Compute the intial energy
+		double k_sqr;
+		double init_enrg = 0.0;
+		for (int i = 0; i < local_Nx; ++i) {
+			tmp = i * Ny_Fourier;
+			for (int j = 0; j < Ny_Fourier; ++j) {
+				indx = tmp + j;
+
+				// Compute the k^2
+				k_sqr = (double) (run_data->k[0][i] * run_data->k[0][i] + run_data->k[1][j] * run_data->k[1][j]);
+
+				if ((j == 0) || (j == Ny_Fourier)) {
+					init_enrg += k_sqr * cabs(psi_hat[indx] * conj(psi_hat[indx]));
+				}
+				else {
+					init_enrg += 2.0 * k_sqr * cabs(psi_hat[indx] * conj(psi_hat[indx]));
+				}
+			}
+		}
+
+		///-------------------------- Normalize field with the initial energy
+		// Normalize 
+		init_enrg *= (0.5 / pow(Nx * Ny, 2.0)) * 4.0 * pow(M_PI, 2.0);
+
+		// Reduce all local energy sums and broadcast back to each process
+		MPI_Allreduce(MPI_IN_PLACE, &init_enrg, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+		for (int i = 0; i < local_Nx; ++i) {	
+			tmp = i * (Ny_Fourier);
+			for (int j = 0; j < Ny_Fourier; ++j) {
+				indx = tmp + j;
+
+				psi_hat[indx] *= sqrt(DECAY_E0 / init_enrg);
+			}
+		}
 	}
 	else if (!(strcmp(sys_vars->u0, "RANDOM"))) {
 		// ---------------------------------------
@@ -947,14 +1032,17 @@ void ExactSoln(double t, double* norm) {
 			indx = tmp + j;
 
 			// Get the solution to the Heat Equation 
-			theta = cos(KAPPA * run_data->x[0][i]) * sin(KAPPA * run_data->x[1][j]) * exp(-2.0 * sys_vars->NU * t) + 2.0;
+			theta = cos(run_data->x[0][i]) * sin(run_data->x[1][j]) * exp(-2.0 * sys_vars->NU * t) + 2.0;
 
 			// Get the solution in terms of velocity potential
 			run_data->exact_soln[indx] = 2.0 * sys_vars->NU * log(theta);
 
+			// Normalize the inverse fourier transform
+			run_data->psi[indx] *= norm_fac;
+
 			// Update the norms
-			norm[0] = fmax(fabs(run_data->psi[indx] * norm_fac - run_data->exact_soln[indx]), norm[0]);
-			l2_norm += pow(run_data->psi[indx] * norm_fac - run_data->exact_soln[indx], 2.0);
+			norm[0] = fmax(fabs(run_data->psi[indx] - run_data->exact_soln[indx]), norm[0]);
+			l2_norm += pow(run_data->psi[indx] - run_data->exact_soln[indx], 2.0);
 		}
 	}
 
@@ -1168,10 +1256,10 @@ void PrintUpdateToTerminal(int iters, double t, double dt, double T, int save_da
 	if( !(sys_vars->rank) ) {	
 	#if defined(TESTING)
 		// Print to screen
-		printf("Iter: %d/%ld\tt: %1.6lf/%1.3lf\tdt: %g\tMax Psi: %g\tKE: %g\tDivSqr: %g\tuv: %g\tuSqr - vSqr: %g\tL2norm: %g\tLinf: %g\n", iters, sys_vars->num_t_steps, t, T, dt, max_psi, run_data->tot_energy[save_data_indx], run_data->tot_div_sqr[save_data_indx], run_data->tot_uv[save_data_indx], run_data->tot_u_sqr_v_sqr[save_data_indx], norm[1], norm[0]);
+		printf("Iter: %d/%ld\tt: %1.6lf/%1.3lf\tdt: %1.6g\tMax Psi: %1.6g \tKE: %1.6g \tDivSqr: %1.6g \tuv: %1.6g \tuSqr - vSqr: %1.6g \tL2norm: %1.6g \tLinf: %1.6g\n", iters, sys_vars->num_t_steps, t, T, dt, max_psi, run_data->tot_energy[save_data_indx], run_data->tot_div_sqr[save_data_indx], run_data->tot_uv[save_data_indx], run_data->tot_u_sqr_v_sqr[save_data_indx], norm[1], norm[0]);
 	#else
 		// Print to screen
-		printf("Iter: %d/%ld\tt: %1.6lf/%1.3lf\tdt: %g\tMax Psi: %g\tKE: %gDivSqr: %g\tuv: %g\tuSqr - vSqr: %g\t\n", iters, sys_vars->num_t_steps, t, T, dt, max_psi, run_data->tot_energy[save_data_indx], run_data->tot_div_sqr[save_data_indx], run_data->tot_uv[save_data_indx], run_data->tot_u_sqr_v_sqr[save_data_indx]);
+		printf("Iter: %d/%ld\tt: %1.6lf/%1.3lf\tdt: %1.6g\tMax Psi: %1.6g \tKE: %1.6g \tDivSqr: %1.6g \tuv: %1.6g \tuSqr - vSqr: %1.6g\n", iters, sys_vars->num_t_steps, t, T, dt, max_psi, run_data->tot_energy[save_data_indx], run_data->tot_div_sqr[save_data_indx], run_data->tot_uv[save_data_indx], run_data->tot_u_sqr_v_sqr[save_data_indx]);
 	#endif
 	}
 }
@@ -1194,11 +1282,11 @@ void SystemCheck(double dt, int iters) {
 	// Check Stopping Criteria 
 	// -------------------------------
 	if (psi_max >= MAX_PSI_LIM)	{
-		fprintf(stderr, "\n["YELLOW"SOVLER FAILURE"RESET"] --- System has reached maximum Velocity Potential limt at Iter: ["CYAN"%d"RESET"] - Psi_max: ["CYAN"%g"RESET"] Psi_lim: ["CYAN"%g"RESET"]\n-->> Exiting!!!\n", iters, psi_max, MAX_PSI_LIM);
+		fprintf(stderr, "\n["YELLOW"SOVLER FAILURE"RESET"] --- System has reached maximum Velocity Potential limt at Iter: ["CYAN"%d"RESET"] - Psi_max: ["CYAN"%1.6g"RESET"] Psi_lim: ["CYAN"%1.6g"RESET"]\n-->> Exiting!!!\n", iters, psi_max, MAX_PSI_LIM);
 		exit(1);
 	}
 	else if (dt <= MIN_STEP_SIZE) {
-		fprintf(stderr, "\n["YELLOW"SOVLER FAILURE"RESET"] --- Timestep has become too small to continue at Iter: ["CYAN"%d"RESET"] - dt: ["CYAN"%g"RESET"] dt_lim: ["CYAN"%g"RESET"]\n-->> Exiting!!!\n", iters, dt, MIN_STEP_SIZE);
+		fprintf(stderr, "\n["YELLOW"SOVLER FAILURE"RESET"] --- Timestep has become too small to continue at Iter: ["CYAN"%d"RESET"] - dt: ["CYAN"%1.6g"RESET"] dt_lim: ["CYAN"%1.6g"RESET"]\n-->> Exiting!!!\n", iters, dt, MIN_STEP_SIZE);
 		exit(1);		
 	}
 	else if (iters >= (int)MAX_ITERS) {

@@ -165,7 +165,7 @@ int GetCMLArgs(int argc, char** argv) {
                 if (hyper_drag_flag == 0) {
                     // Read in the Ekman drag coeficient
                     sys_vars->EKMN_ALPHA = atof(optarg);
-                    if (sys_vars->EKMN_ALPHA <= 0) {
+                    if (sys_vars->EKMN_ALPHA < 0) {
                         fprintf(stderr, "\n["RED"ERROR"RESET"] Parsing of Command Line Arguements Failed: The provided Ekman drag: [%lf] must be strictly positive\n-->> Exiting!\n\n", sys_vars->EKMN_ALPHA);       
                         exit(1);
                     }
@@ -186,9 +186,19 @@ int GetCMLArgs(int argc, char** argv) {
                     strncpy(sys_vars->u0, "HOPF_COLE", 64);
                     break;
                 }
-                else if (!(strcmp(optarg,"TG_VEL"))) {
-                    // The Taylor Green vortex - starting with the velocity
-                    strncpy(sys_vars->u0, "TG_VEL", 64);
+                else if (!(strcmp(optarg,"TG_VEL_POT"))) {
+                    // The Taylor Green vortex - starting with the velocity potential
+                    strncpy(sys_vars->u0, "TG_VEL_POT", 64);
+                    break;
+                }
+                else if (!(strcmp(optarg,"GAUSS"))) {
+                    // Gaussian Blob initial condition centred at origin
+                    strncpy(sys_vars->u0, "GAUSS", 64);
+                    break;
+                }
+                else if (!(strcmp(optarg,"DECAY"))) {
+                    // Freely decaying initial condition
+                    strncpy(sys_vars->u0, "DECAY", 64);
                     break;
                 }
                 else if (!(strcmp(optarg,"TESTING"))) {
@@ -197,7 +207,7 @@ int GetCMLArgs(int argc, char** argv) {
                     break;
                 }
                 else if (!(strcmp(optarg,"RANDOM"))) {
-                    // Random initial conditions
+                    // Random initial conditions - random phases and amps
                     strncpy(sys_vars->u0, "RANDOM", 64);
                     break;
                 }
