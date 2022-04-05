@@ -244,7 +244,7 @@ if __name__ == '__main__':
                         executable, 
                         output_dir, 
                         nx, ny, 
-                        t0, t, 
+                        t0, T, 
                         c, h, 
                         v, hypervisc,
                         ekmn_alpha, int(ekmn_hypo_diff), 
@@ -301,7 +301,7 @@ if plotting:
     
     ## Get the number of processes to launch
     proc_limit = num_plotting_job_threads
-    print("Number of Post Processing Processes Created = [" + tc.C + "{}".format(proc_limit) + tc.Rst + "]")
+    print("Number of Plotting Processes Created = [" + tc.C + "{}".format(proc_limit) + tc.Rst + "]")
 
     # Create output objects to store process error and output
     if collect_data:

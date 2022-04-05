@@ -1062,10 +1062,10 @@ void GetTimestep(double* dt) {
 	// Initialize variables
 	int tmp;
 	int indx;
-	double norm_fac = 1.0 / (double)(Nx * Ny);
 	const long int Nx = sys_vars->N[0];
 	const long int Ny = sys_vars->N[1];
 	const long int Ny_Fourier = sys_vars->N[1] / 2 + 1;
+	double norm_fac = 1.0 / (double)(Nx * Ny);
 
 	// ---------------------------- Get the Real Space Velocities
 	// Compute the velocity in Fourier space
