@@ -14,6 +14,7 @@ import os
 import sys
 import h5py
 import shutil
+import signal
 import matplotlib.pyplot as plt
 from itertools import zip_longest
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -47,12 +48,24 @@ def run_command_live(cmd):
 
 	proc.wait()
 
+def exit_handler(signum, frame):
 
+	'''
+	Emtpies Live data directory before exiting programme
+	'''
+
+	## Clean live directory and exit
+	run(["rm -r {}".format(output_dir + "*")], shell = True)
+	print()
+	sys.exit(0)
 
 ######################
 ##       MAIN       ##
 ######################
 if __name__ == '__main__':
+
+	## Set upt the signal handler to call our exit function when 'Ctrl+C' is executed at CML
+	signal.signal(signal.SIGINT, exit_handler)
 
 	##########################
 	##   SOLVER VARIABLES   ##
