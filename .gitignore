@@ -54,6 +54,7 @@ dkms.conf
 ## Data
 Data/Tmp/*
 Data/Test/*
+Data/Live/*
 
 ## Objects Dirs
 Solver/obj/*
